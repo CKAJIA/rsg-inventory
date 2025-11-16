@@ -424,9 +424,9 @@ const InventoryContainer = Vue.createApp({
                     weight: 'Weight',
                     id: 'ID',
                     cash: 'Cash',
-                    received: 'Received',
-                    used: 'Used',
-                    removed: 'Removed',
+                    received: 'Получено',
+                    used: 'Использовано',
+                    removed: 'Удалено',
 					amount_start: 'Amount',
 					amount_end: '',
 					quality: 'Quality',
@@ -1490,9 +1490,31 @@ const InventoryContainer = Vue.createApp({
         showItemNotification(itemData) {
 			const item = itemData.item || {};
             const rawType = (itemData.type || '').toLowerCase();
+			
             this.notificationText = item.label || "";
             this.notificationImage = item.image ? "images/" + item.image : "";
-            this.notificationType = rawType === "add" ? "Received" : rawType === "use" ? "Used" : (rawType === "drop" || rawType === "remove") ? "Removed" : "";
+			
+			// Robust mapping of types to localized labels
+			const typeMap = {
+                add: this.t.received,
+                added: this.t.received,
+                receive: this.t.received,
+			    
+                use: this.t.used,
+                used: this.t.used,
+			    
+                drop: this.t.removed,
+                remove: this.t.removed,
+                removed: this.t.removed
+            };
+			// Displayed text (localized)
+            this.notificationType = typeMap[rawType] || this.t[rawType] || (rawType ? rawType.charAt(0).toUpperCase() + rawType.slice(1) : "");
+			// Stable CSS class (non-localized) to preserve your .type-add / .type-use / .type-remove styles
+			this.notificationClass = (rawType === 'added') ? 'add'
+            : (rawType === 'removed') ? 'remove'
+            : (rawType === 'use' || rawType === 'used') ? 'use'
+            : (rawType === 'drop') ? 'remove'
+            : rawType;
             this.notificationAmount = itemData.amount || 1;
 			const desc = item.info?.description || item.description || "";
 			this.notificationDescription = typeof desc === 'string' ? desc : '';

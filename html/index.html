@@ -375,7 +375,7 @@
                         <div class="item-box-amount" v-if="notificationAmount && notificationAmount > 1">x{{ notificationAmount }}</div>
                     </div>
                     <div class="item-box-content">
-                        <div class="item-box-type" :class="'type-' + notificationType.toLowerCase()">{{ notificationType }}</div>
+                        <div class="item-box-type" :class="'type-' + (notificationClass || '').toLowerCase()">{{ notificationType }}</div>
                         <div class="item-box-divider"></div>
                         <div class="item-box-header">
                             <p>{{ notificationText }}</p>
