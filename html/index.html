@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>RSG Inventory</title>
+        <link rel="stylesheet" href="main.css" />
+        <link rel="stylesheet" href="https://unpkg.com/floating-vue@5.2.2/dist/style.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"/>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/js/all.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@floating-ui/core@1.6.0"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@floating-ui/dom@1.6.1"></script>
+        <script src="https://unpkg.com/floating-vue@5.2.2/dist/floating-vue.umd.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
+        <script src="app.js" defer></script>
+    </head>
+    <body>
+        <div id="app">
+            <div class="inventory-container" v-if="isInventoryOpen" @mousemove="drag" @mouseup="endDrag" @mousedown="containerMouseDownAction">
+				<div class="player-inventory-bg" :class="{ 'centered-inventory-bg': shouldCenterInventory }">	
+					<div class="player-inventory-header">
+						<div class="labels-container">
+							<div class="current-id">
+								<img class="id-icon" src="./assets/id.png" alt="id" />
+								<p>{{ playerId }}</p>
+							</div>
+							<div class="inventory-label">
+								<p>{{ t.satchel }}</p>
+							</div>
+							<!--<div class="current-weight">
+								<img class="weight-icon" src="assets/rpg_overweight.png" alt="weight" />
+								<p>{{(playerWeight / 1000).toFixed(1) }} / {{ (maxWeight / 1000).toFixed(1)}}</p>
+							</div>-->							
+							<div class="current-money">
+								<img class="money-icon" src="./assets/cash.png" alt="money" />
+								<p>${{ (playerMoney / 100).toFixed(2) }}</p>
+							</div>
+						</div>						
+					</div>
+					<div class="divider"></div>
+					<div class="player-controls-section">
+						<div class="player-top-bar">
+							<button class="player-side-button" @click="cyclePlayerCategory(-1)">Q</button>
+							<div class="player-center-text">{{ currentPlayerCategoryTitle }}</div>
+							<button class="player-side-button" @click="cyclePlayerCategory(1)">E</button>
+						</div>
+						<div class="player-cats">
+							<button
+								v-for="cat in availablePlayerCategories"
+								:key="cat"
+								class="catbutton-icon"
+								:id="'icon-' + cat"
+								@click="setPlayerCategory(cat)"
+								:class="{ active: currentPlayerCategory === cat }"
+								:title="categoryTitle(cat)"	>
+							</button>
+						</div>
+						<!--<div class="player-icon-bar">
+							<button id="icon-all"  class="catbutton-icon icon-all active" alt="Все"></button>
+							<button id="icon-clothes"    class="catbutton-icon icon-clothes" alt="Одежда"></button>
+							<button id="icon-weapons"  class="catbutton-icon icon-weapons" alt="Оружие"></button>
+							<button id="icon-provision"   class="catbutton-icon icon-provision" alt="Провиант"></button>
+							<button id="icon-remedies"    class="catbutton-icon icon-remedies" alt="Тоники"></button>
+							<button id="icon-ingridient"    class="catbutton-icon icon-ingridient" alt="Компоненты"></button>
+							<!--<button id="icon-herbs"    class="catbutton-icon icon-herbs" alt="Растения"></button>
+							<button id="icon-animals"    class="catbutton-icon icon-animals" alt="Животные"></button>-->
+							<!--<button id="icon-material"    class="catbutton-icon icon-material" alt="Материалы"></button>
+							<button id="icon-kit"    class="catbutton-icon icon-kit" alt="Оснащение"></button>
+							<button id="icon-valuable"    class="catbutton-icon icon-valuable" alt="Ценности"></button>
+							<button id="icon-documents"    class="catbutton-icon icon-documents" alt="Документы"></button>
+							<button id="icon-collections"    class="catbutton-icon icon-collections" alt="Коллекции"></button>
+							<button id="icon-horse"    class="catbutton-icon icon-horse" alt="Лошадь"></button>
+							<button id="icon-sell"    class="catbutton-icon icon-sell" alt="Продажа"></button>
+						</div>-->
+					</div>
+					<div class="divider"></div>					
+					<div class="player-inventory">
+						<div class="item-grid" data-inventory="player">
+							<div
+								v-for="slot in filteredPlayerSlots"
+								:key="slot"
+								class="item-slot"
+								:data-slot="slot"
+								:class="{ 'dark': isShopInventory && getItemInSlot(slot, 'player') && getItemInSlot(slot, 'player').buyPrice,
+										'invalid-slot-highlight': errorSlot === slot }"
+								v-tooltip.right-end="{content: generateTooltipContent(getItemInSlot(slot, 'player')), html: true}"
+								@dblclick="getItemInSlot(slot, 'player') && useItem(getItemInSlot(slot, 'player'))"
+								@mousedown="event => handleMouseDown(event, slot, 'player')"
+							>
+								<div class="item-slot-key" v-if="slot && getItemInSlot(slot, 'player') && slot <= 5 && !isShopInventory">
+									<p>{{ slot }}</p>
+								</div>
+								<div class="item-slot-img" v-if="getItemInSlot(slot, 'player')">
+									<img :src="'images/' + getItemInSlot(slot, 'player').image" alt="" />
+								</div>
+								<div v-if="getItemInSlot(slot, 'player') && getItemInSlot(slot, 'player').squality" class="item-quality-stars">
+									<img :src="'./assets/quality_0' + getItemInSlot(slot, 'player').squality + '.png'" alt="" />
+								</div>
+								<div class="item-slot-amount" v-if="getItemInSlot(slot, 'player')">
+										<p v-if="getItemInSlot(slot, 'player').amount > 99">99+</p>
+										<p v-if="getItemInSlot(slot, 'player').amount < 100">{{ getItemInSlot(slot, 'player').amount }}</p>
+								</div>
+								<!--<div class="item-slot-amount" v-if="getItemInSlot(slot, 'player')">
+										<p>{{ getItemInSlot(slot, 'player').amount }}</p>
+								</div>-->
+								<div v-if="isShopInventory && getItemInSlot(slot, 'player') && getItemInSlot(slot, 'player').buyPrice" class="item-sell-price">
+									<p>{{ getItemInSlot(slot, 'player').buyPrice % 1 === 0 ? getItemInSlot(slot, 'player').buyPrice : getItemInSlot(slot, 'player').buyPrice.toFixed(2) }} $</p>
+								</div>
+								<div class="item-slot-durability" v-if="getItemInSlot(slot, 'player') && getItemInSlot(slot, 'player').info && 'quality' in getItemInSlot(slot, 'player').info">
+									<div
+										class="item-slot-durability-fill"
+										v-if="getItemInSlot(slot, 'player').info && 'quality' in getItemInSlot(slot, 'player').info"
+										:style="{ width: (getItemInSlot(slot, 'player').info.quality / 100) * 100 + '%' }"
+										:class="{
+											'high': getItemInSlot(slot, 'player').info.quality > 75,
+											'medium': getItemInSlot(slot, 'player').info.quality <= 75 && getItemInSlot(slot, 'player').info.quality > 25,
+											'low': getItemInSlot(slot, 'player').info.quality <= 25
+										}"
+									></div>
+									<div class="item-slot-durability-fill" v-else style="width: 0%"></div>
+								</div>
+								<!-- <div class="item-slot-label" v-if="getItemInSlot(slot, 'player')">
+									<p>{{ getItemInSlot(slot, 'player').label }}</p>
+								</div> -->
+							</div>
+						</div>
+						<div class="weight-bar">
+							<div class="weight-bar-fill" :style="{ width: Math.min((playerWeight / maxWeight) * 100, 100) + '%' }" :class="weightBarClass"></div>
+						</div>
+						<div class="weight-info">
+							<div class="current-weight">
+								<!--<img class="weight-icon" src="assets/rpg_overweight.png" alt="weight" />-->
+								<div class="weight-icon"></div>
+								<p>{{(playerWeight / 1000).toFixed(1) }} / {{ (maxWeight / 1000).toFixed(1)}}</p>
+							</div>
+							<div class="item-weight" v-if="formatWeight(selectedPlayerItemInfo)">
+								<p>{{ formatWeight(selectedPlayerItemInfo) }} kg / {{ formatWeight(selectedPlayerItemInfo, true) }} kg</p>
+							</div>
+						</div>
+						<div class="item-info">
+							<!-- название -->
+							<div class="item-label" v-if="selectedPlayerItemInfo && selectedPlayerItemInfo.label">
+								{{ selectedPlayerItemInfo.label }}
+							</div>
+							<!-- серийный номер -->
+							<div class="item-serie" v-if="selectedPlayerItemInfo && selectedPlayerItemInfo.info.serie">
+									{{ t.serial }}&nbsp;{{ selectedPlayerItemInfo.info.serie }}
+							</div>
+						
+							<!-- эффекты -->
+							<div class="item-effects" v-if="selectedPlayerItemInfo && selectedPlayerItemInfo.effects && selectedPlayerItemInfo.effects.length">
+								<ul>
+									<li v-for="(effect, i) in selectedPlayerItemInfo.effects" :key="i">{{ effect }}</li>
+								</ul>
+							</div>						
+						
+							<!-- описание -->
+							<div class="item-description" v-if="selectedPlayerItemInfo && selectedPlayerItemInfo.description">
+								{{ selectedPlayerItemInfo.description }}
+							</div>
+							
+							<div class="item-byinfo" v-if="selectedPlayerItemInfo && selectedPlayerItemInfo.buyPrice">
+								<div class="divider"></div>
+								<div class="item-bying">
+									<div class="item-label">{{ t.sellable }}</div>
+									<div class="item-label">{{ Number(selectedPlayerItemInfo.buyPrice).toFixed(2) }} $</div>
+								</div>
+							</div>
+						</div>
+						<div class="divider"></div>
+						<div class="item-amount-quantity">
+							<div class="item-quality">
+								<div class="item-quality1" v-if="selectedPlayerItemInfo && selectedPlayerItemInfo.info.quality">
+									{{ t.quality }} {{ selectedPlayerItemInfo.info.quality }} %
+								</div>
+							</div>
+							<div class="item-quantity">
+								<div class="item-quantity1" v-if="selectedPlayerItemInfo && selectedPlayerItemInfo.amount">
+									{{ t.amount_start }} {{ selectedPlayerItemInfo.amount }} {{ t.amount_end }}
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+                <!--<div class="input-container" v-if="!isOtherInventoryEmpty">
+                    <div class="input-wrapper">
+                        <input type="number" v-model="transferAmount" min="1" :placeholder="transferAmount === null ? 'amount' : ''" />
+                        <button @click="clearTransferAmount" class="clear-button">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>-->
+				<div v-if="showAmountPrompt" class="amount-prompt-overlay">
+					<div class="amount-prompt">
+						<div class="amount-tittle">{{ t.enter_ammount }}</div>
+						<input id="amountInput" type="number" v-model.number="tempTransferAmount" min="1" ref="amountInput" />
+						<div class="prompt-buttons">
+							<div class="prompt-button-text">{{ t.confirm }}</div><button type="button" class="image-button-ok" @click="confirmAmount"></button>
+							<div class="prompt-button-text btn-cancel">{{ t.cancel }}</div><button type="button" class="image-button-cancel" @click="cancelAmount"></button>
+						</div>
+					</div>
+				</div>
+				<div class="other-inventory-bg" v-if="!isOtherInventoryEmpty">
+					<div class="other-inventory-header">
+						<div class="labels-container">
+							<div class="inventory-label">
+								<p>{{ otherInventoryLabel }}</p>
+							</div>
+						</div>
+					</div>
+					<div class="divider"></div>
+					<div class="other-controls-section">
+						<div class="other-top-bar" v-if="isShopInventory">
+							<button class="other-side-button" @click="cycleShopMode(-1)">A</button>
+							<div class="other-center-text">{{ currentShopModeTitle }}</div>
+							<button class="other-side-button" @click="cycleShopMode(1)">D</button>
+						</div>
+						<div class="other-top-bar" v-else>
+							<button class="other-side-button" @click="cycleOtherCategory(-1)">A</button>
+							<div class="other-center-text">{{ currentOtherCategoryTitle }}</div>
+							<button class="other-side-button" @click="cycleOtherCategory(1)">D</button>
+						</div>
+						<div class="other-cats">
+							<button
+								v-for="cat in availableOtherCategories"
+								:key="cat"
+								class="catbutton-icon"
+								:id="'icon-' + cat"
+								@click="setOtherCategory(cat)"
+								:class="{ active: currentOtherCategory === cat }"
+								:title="categoryTitle(cat)">
+							</button>
+						</div>
+					</div>
+					<div class="divider"></div>	
+					<div class="other-inventory" v-if="!isOtherInventoryEmpty">
+						<div class="item-grid" data-inventory="other">
+							<div v-for="slot in filteredOtherSlots" :key="slot" class="item-slot" v-tooltip.right-end="{content: generateTooltipContent(getItemInSlot(slot, 'other')), html: true}" :data-slot="slot" @mousedown="event => handleMouseDown(event, slot, 'other')" @dragover.prevent>
+								<div class="item-slot-img" v-if="getItemInSlot(slot, 'other')">
+									<img :src="'images/' + getItemInSlot(slot, 'other').image" alt="" />
+								</div>
+								<div v-if="getItemInSlot(slot, 'other') && getItemInSlot(slot, 'other').squality" class="item-quality-stars">
+									<img :src="'./assets/quality_0' + getItemInSlot(slot, 'other').squality + '.png'" alt="" />
+								</div>
+								<!--<div class="item-slot-amount" v-if="!isShopInventory && getItemInSlot(slot, 'other') && typeof getItemInSlot(slot, 'other').amount === 'number'" :class="{'text-red': getItemInSlot(slot, 'other').amount < 1}">-->
+								<div class="item-slot-amount" v-if="getItemInSlot(slot, 'other') && typeof getItemInSlot(slot, 'other').amount === 'number'" :class="{'text-red': getItemInSlot(slot, 'other').amount < 1}">
+									<p>
+										{{ getItemInSlot(slot, 'other').amount }}{{ typeof getItemInSlot(slot, 'other').maxStock === 'number' ? '/' + getItemInSlot(slot, 'other').maxStock : '' }}
+									</p>
+								</div>
+								<div v-if="isShopInventory && currentShopMode === 'buy' && getItemInSlot(slot, 'other') && getItemInSlot(slot, 'other').price" class="item-price">
+									<p>{{ getItemInSlot(slot, 'other').price % 1 === 0 ? getItemInSlot(slot, 'other').price : getItemInSlot(slot, 'other').price.toFixed(2) }} $</p>
+								</div>
+								<div v-if="isShopInventory && currentShopMode === 'sell' && getItemInSlot(slot, 'other') && getItemInSlot(slot, 'other').buyPrice" class="item-sell-price">
+									<p>{{ getItemInSlot(slot, 'other').buyPrice }} $</p>
+								</div>
+								<div class="item-slot-durability" v-if="getItemInSlot(slot, 'other') && 'quality' in getItemInSlot(slot, 'other').info">
+									<div
+										class="item-slot-durability-fill"
+										v-if="getItemInSlot(slot, 'other').info && 'quality' in getItemInSlot(slot, 'other').info"
+										:style="{ width: (getItemInSlot(slot, 'other').info.quality / 100) * 100 + '%' }"
+										:class="{
+											'high': getItemInSlot(slot, 'other').info.quality > 75,
+											'medium': getItemInSlot(slot, 'other').info.quality <= 75 && getItemInSlot(slot, 'other').info.quality > 25,
+											'low': getItemInSlot(slot, 'other').info.quality <= 25
+										}"
+									></div>
+									<div class="item-slot-durability-fill" v-else style="width: 0%"></div>
+								</div>
+								<!-- <div class="item-slot-label" v-if="getItemInSlot(slot, 'other')">
+									<p>{{ getItemInSlot(slot, 'other').label }}</p>
+								</div> -->
+							</div>
+						</div>
+						<div class="weight-bar">
+							<div class="weight-bar-fill" :style="{ width: Math.min((otherInventoryWeight / otherInventoryMaxWeight) * 100, 100) + '%' }" :class="otherWeightBarClass"></div>
+						</div>
+						<div class="weight-info">
+							<div class="current-weight">
+								<!--<img class="weight-icon" src="assets/rpg_overweight.png" alt="weight" />-->
+								<div class="weight-icon"></div>
+								<p>{{(otherInventoryWeight / 1000).toFixed(1) }} / {{(otherInventoryMaxWeight / 1000).toFixed(1)}}</p>
+							</div>
+							<div class="item-weight" v-if="formatWeight(selectedOtherItemInfo)">
+								<p>{{ formatWeight(selectedOtherItemInfo) }} kg / {{ formatWeight(selectedOtherItemInfo, true) }} kg</p>
+							</div>
+						</div>
+						<div class="item-info">
+							<!-- название -->
+							<div class="item-label" v-if="selectedOtherItemInfo && selectedOtherItemInfo.label">
+								{{ selectedOtherItemInfo.label }}
+							</div>
+						
+							<!-- эффекты -->
+							<div class="item-effects" v-if="selectedOtherItemInfo && selectedOtherItemInfo.effects && selectedOtherItemInfo.effects.length">
+								<ul>
+									<li v-for="(effect, i) in selectedOtherItemInfo.effects" :key="i">{{ effect }}</li>
+								</ul>
+							</div>						
+						
+							<!-- описание -->
+							<div class="item-description" v-if="selectedOtherItemInfo && selectedOtherItemInfo.description">
+								{{ selectedOtherItemInfo.description }}
+							</div>
+							<div class="item-sellinfo" v-if="selectedOtherItemInfo && selectedOtherItemInfo.price && currentShopMode === 'buy'">
+								<div class="divider"></div>
+								<div class="item-selling">
+									<div class="item-label">{{ t.price }}</div>
+									<div class="item-label">{{ Number(selectedOtherItemInfo.price).toFixed(2) }} $</div>
+								</div>
+							</div>
+							<div class="item-sellinfo" v-if="selectedOtherItemInfo && selectedOtherItemInfo.buyPrice && currentShopMode === 'sell'">
+								<div class="divider"></div>
+								<div class="item-selling">
+									<div class="item-label">{{ t.value }}</div>
+									<div class="item-label">{{ Number(selectedOtherItemInfo.buyPrice).toFixed(2) }} $</div>
+								</div>
+							</div>
+						</div>
+						
+						<div class="divider"></div>
+						<div class="item-amount-quantity">
+							<div class="item-quality">
+								<div class="item-quality1" v-if="selectedOtherItemInfo && selectedOtherItemInfo.info.quality">
+									{{ t.quality }} {{ selectedOtherItemInfo.info.quality }}%
+								</div>
+							</div>
+							<div class="item-quantity">
+								<div class="item-quantity1" v-if="selectedOtherItemInfo && selectedOtherItemInfo.amount">
+									{{ t.amount_start }} {{ selectedOtherItemInfo.amount }} {{ t.amount_end }}
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+            </div>
+            <div class="hotbar-container" v-if="showHotbar">
+                <div class="hotbar">
+                    <div v-for="slot in 5" :key="slot" class="hotbar_bg">
+						<div class="item-slot">
+							<div class="item-slot-key">
+								<p>{{ slot }}</p>
+							</div>
+							<div class="item-slot-img" v-if="getHotbarItemInSlot(slot)">
+								<img :src="'images/' + getHotbarItemInSlot(slot).image" alt="" />
+							</div>
+							<div class="item-slot-amount" v-if="getHotbarItemInSlot(slot) && !getHotbarItemInSlot(slot).unique">
+								<p>{{ getHotbarItemInSlot(slot).amount }}</p>
+							</div>
+							<div class="item-slot-durability" v-if="getHotbarItemInSlot(slot) && 'quality' in getHotbarItemInSlot(slot).info">
+								<div
+									class="item-slot-durability-fill"
+									v-if="getHotbarItemInSlot(slot).info && 'quality' in getHotbarItemInSlot(slot).info"
+									:style="{ width: (getHotbarItemInSlot(slot).info.quality / 100) * 100 + '%' }"
+									:class="{
+										'high': getHotbarItemInSlot(slot).info.quality > 75,
+										'medium': getHotbarItemInSlot(slot).info.quality <= 75 && getHotbarItemInSlot(slot).info.quality > 25,
+										'low': getHotbarItemInSlot(slot).info.quality <= 25
+									}"
+								></div>
+								<div class="item-slot-durability-fill" v-else style="width: 0%"></div>
+							</div>
+							<!--<div class="item-slot-label" v-if="getHotbarItemInSlot(slot)">
+								<p>{{ getHotbarItemInSlot(slot).label }}</p>
+							</div>-->
+						</div>
+                    </div>
+                </div>
+            </div>
+			<div class="notification-container" v-if="showNotification">
+                <div class="item-box">
+                    <div class="item-box-icon">
+                        <img :src="notificationImage" alt="" />
+                        <div class="item-box-amount" v-if="notificationAmount && notificationAmount > 1">x{{ notificationAmount }}</div>
+                    </div>
+                    <div class="item-box-content">
+                        <div class="item-box-type" :class="'type-' + notificationType.toLowerCase()">{{ notificationType }}</div>
+                        <div class="item-box-divider"></div>
+                        <div class="item-box-header">
+                            <p>{{ notificationText }}</p>
+                        </div>
+                        <div class="item-box-description" v-if="notificationDescription">
+                            <p>{{ notificationDescription }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="required-item-container" v-if="showRequiredItems">
+                <div class="required-item">
+                    <div v-for="(item, index) in requiredItems" :key="index" class="item-slot">
+                        <div class="item-slot-img">
+                            <img :src="'images/' + item.image" alt="" />
+                        </div>
+                        <div class="item-slot-label">
+                            <p>{{ item.label }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="weapon-attachments" v-if="showWeaponAttachments">
+                <img class="weapon" :src="'images/' + selectedWeapon.image" alt="" />
+                <div class="attachment-slot" v-for="(attachment, i) in selectedWeaponAttachments" :key="i" @click="removeAttachment(attachment)">
+                    <img :src="'images/' + attachment.attachment + '.png'" alt="" />
+                </div>
+            </div>
+            <div v-if="draggedItem" class="item-slot" :class="{ 'dragged-item': draggedItem }" :style="{ top: dragY + 'px', left: dragX + 'px' }">
+                <div class="item-slot-img">
+                    <img :src="'images/' + draggedItem.image" alt="" />
+                </div>
+                <div class="item-slot-amount">
+                    <p>x{{ draggedItem.amount }}</p>
+                </div>
+                <div class="item-slot-label">
+                    <p>{{ draggedItem.label }}</p>
+                </div>
+            </div>
+            <ul v-if="showContextMenu" class="context-menu" :style="{ top: contextMenuPosition.top, left: contextMenuPosition.left }">
+                <li v-if="contextMenuItem.useable" @click="useItem(contextMenuItem)">
+                    <i class="fa-solid fa-star" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.use }}</li>
+                <li @mouseover="showSubmenu = true" @mouseleave="showSubmenu = false">
+                    <i class="fa-solid fa-hand" style="color: #ffffffab; width: 18px;" ></i>&nbsp;{{ t.give }}
+                    <ul v-if="showSubmenu" class="submenu">
+                        <li @click="giveItem(contextMenuItem, 1)">
+							<i class="fa-solid fa-1" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.single }}
+                        <li @click="giveItem(contextMenuItem, 'half')">
+							<i class="fa-solid fa-scissors" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.half }}
+						<li @click="giveItem(contextMenuItem, 'enteramount')">
+							<i class="fa-solid fa-xmarks-lines" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.amount }}
+                        <li @click="giveItem(contextMenuItem, 'all')">
+							<i class="fa-solid fa-reply-all" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.all }}						
+                    </ul>
+                </li>
+                <li @mouseover="showSubmenu = true" @mouseleave="showSubmenu = false">
+                    <i class="fa-solid fa-arrow-down" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.drop }}
+                    <ul v-if="showSubmenu" class="submenu">
+                        <li @click="dropItem(contextMenuItem, 1)">
+							<i class="fa-solid fa-1" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.single }}
+                        <li @click="dropItem(contextMenuItem, 'half')">
+							<i class="fa-solid fa-scissors" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.half }}
+                        <li @click="dropItem(contextMenuItem, 'enteramount')">
+							<i class="fa-solid fa-xmarks-lines" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.amount }}
+                        <li @click="dropItem(contextMenuItem, 'all')">
+							<i class="fa-solid fa-reply-all" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.all }}
+                    </ul>
+                </li>
+                <li @mouseover="showSubmenu = true" @mouseleave="showSubmenu = false">
+					<i class="fa-solid fa-clone" style="color: #ffffffab; width: 18px;" ></i>&nbsp;{{ t.split }}
+                    <ul v-if="showSubmenu" class="submenu split">
+						<li @click="splitAndPlaceItem(contextMenuItem, 'player', 1)">
+							<i class="fa-solid fa-1" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.single }}
+						<li @click="splitAndPlaceItem(contextMenuItem, 'player', 'half')">
+							<i class="fa-solid fa-scissors" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.half }}
+						<li @click="splitAndPlaceItem(contextMenuItem, 'player', 'enteramount')">
+							<i class="fa-solid fa-xmarks-lines" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.amount }}
+                    </ul>
+                </li>
+                <li v-if="contextMenuItem.name.includes('weapon_')" @click="copySerial(contextMenuItem)">
+					<i class="fa-solid fa-clipboard" style="color: #ffffffab; width: 18px;" ></i>&nbsp;{{ t.copy_serial }}
+                <li v-if="contextMenuItem.name.includes('weapon_')" @click="openWeaponAttachments(contextMenuItem)">
+					<i class="fa-solid fa-gun" style="color: #ffffffab; width: 18px;" ></i>&nbsp;{{ t.modifications }}
+            </ul>
+        </div>
+    </body>
+</html>
