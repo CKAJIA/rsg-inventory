@@ -62,7 +62,7 @@
     "param_target": "Target player ID",
     "param_item": "Item name (not the label)",
     "param_amount": "Amount to give",
-		"loot_bag": "Loot bag",
+	"loot_bag": "Loot bag",
     "drop_bag": "Drop bag"
   },
     "ui": {
@@ -86,6 +86,40 @@
     "cash": "Cash",
     "received": "Received",
     "used": "Used",
-    "removed": "Removed"
+    "removed": "Removed",
+	"amount_start": "Amount:",
+	"amount_end": "",
+	"quality": "Quality:",
+	"quality_full": "Quality:",
+	"serial": "Serial:",
+	"buy_price": "Buy price",
+	"sell_price": "Sell price",
+	"buy": "Buy",
+	"sellable": "Sellable",
+	"price": "Price",
+	"value": "Value",
+	"modifications": "Modifications",
+	"enter_ammount": "Enter ammount",
+	"confirm": "Confirm",
+	"cancel": "Cancel",
+	
+	"categories": {
+		"all": "All",
+		"clothes": "Clothes",
+		"weapons": "Weapons",
+		"provision": "Provision",
+		"remedies": "Remedies",
+		"ingridient": "Ingridient",
+		"material": "Material",
+		"kit": "Kit",
+		"valuable": "Valuable",
+		"documents": "Documents",
+		"herbs": "Herbs",
+		"animals": "Animals",
+		"collections": "Collections",
+		"horse": "Horse",
+		"sell": "Sellable",
+		"misc": "Misc",
+	}
   }
 }
