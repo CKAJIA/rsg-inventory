@@ -161,7 +161,7 @@ RegisterNetEvent('rsg-inventory:server:SetInventoryData', function(fromInventory
             if fromTooFar or toTooFar then
                 Inventory.CloseInventory(src, fromId)
                 Inventory.CloseInventory(src, toId)
-				local message = fromTooFar and locale('error.source_inv_too_far') or locale('error.target_inv_too_far')
+                local message = fromTooFar and locale('error.source_inv_too_far') or locale('error.target_inv_too_far')
                 TriggerClientEvent('ox_lib:notify', src, {
                     title = message,
                     type = 'error',
@@ -262,7 +262,7 @@ RegisterNetEvent('rsg-inventory:server:openPlayerInventory', function(targetId)
     if distance > 3.0 then
         TriggerClientEvent('ox_lib:notify', src, {
             title = locale('error.error'),
-			description = locale('error.player_too_far'),
+            description = locale('error.player_too_far'),
             type = 'error',
             duration = 5000
         })
@@ -274,7 +274,7 @@ RegisterNetEvent('rsg-inventory:server:openPlayerInventory', function(targetId)
     if not targetMeta.isdead and not targetMeta.ishandcuffed then
         TriggerClientEvent('ox_lib:notify', src, {
             title = locale('error.error'),
-			description = locale('error.target_needs_restrained'),
+            description = locale('error.target_needs_restrained'),
             type = 'error',
             duration = 5000
         })
@@ -353,7 +353,7 @@ RegisterNetEvent('rsg-inventory:server:openStash', function(stashId)
 
         if not hasAccess then
             return TriggerClientEvent('ox_lib:notify', src, {
-				title = locale('error.access_denied'),
+                title = locale('error.access_denied'),
                 description = locale('error.no_permission_stash'),
                 type = 'error',
                 duration = 5000

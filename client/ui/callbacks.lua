@@ -91,20 +91,20 @@ end)
 
 --- NUI callback to use an item
 RegisterNUICallback('UseItem', function(data, cb)
-	if data and data.item then
-		TriggerServerEvent('rsg-inventory:server:useItem', data.item)
-	end
+    if data and data.item then
+        TriggerServerEvent('rsg-inventory:server:useItem', data.item)
+    end
     cb('ok')
 end)
 
 --- NUI callback to move items between inventories
 RegisterNUICallback('SetInventoryData', function(data, cb)
-	if data then
-		TriggerServerEvent('rsg-inventory:server:SetInventoryData', 
-			data.fromInventory, data.toInventory, 
-			data.fromSlot, data.toSlot, 
-			data.fromAmount, data.toAmount)
-	end
+    if data then
+        TriggerServerEvent('rsg-inventory:server:SetInventoryData',
+            data.fromInventory, data.toInventory,
+            data.fromSlot, data.toSlot,
+            data.fromAmount, data.toAmount)
+    end
     cb('ok')
 end)
 

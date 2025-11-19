@@ -11,10 +11,10 @@ Inventory.LoadInventory = function(source, citizenid)
 
     local currentTime = os.time()
 
-    for _, item in pairs(inventory) do		
+    for _, item in pairs(inventory) do
         if item and item.name then
             local itemInfo = RSGCore.Shared.Items[item.name:lower()]
-            local updated, quality, delete = Inventory.CheckItemDecay(item, itemInfo, currentTime)
+            local updated, quality, delete = Inventory.CheckItemDecay(item, itemInfo, currentTime, config.ItemsDecayWhileOffline and 1 or 0)
             local check = not (updated and delete and quality <= 0)
 
             if itemInfo and check then
@@ -28,7 +28,7 @@ Inventory.LoadInventory = function(source, citizenid)
                     type = itemInfo['type'],
                     unique = itemInfo['unique'],
                     useable = itemInfo['useable'],
-					squality = itemInfo['squality'],
+                    squality = itemInfo['squality'],
                     image = itemInfo['image'],
                     shouldClose = itemInfo['shouldClose'],
                     slot = item.slot,
@@ -525,7 +525,8 @@ Inventory.OpenInventory = function (source, identifier, data)
     if not inventory then 
         inventory = Inventory.InitializeInventory(identifier, data) 
     else
-        Inventory.CheckItemsDecay(inventory.items)
+        local decayRate = Helpers.ParseDecayRate(identifier)
+        Inventory.CheckItemsDecay(inventory.items, decayRate or 1)
     end
     inventory.maxweight = (data and data.maxweight) or (inventory and inventory.maxweight) or config.StashSize.maxweight
     inventory.slots = (data and data.slots) or (inventory and inventory.slots) or config.StashSize.slots
@@ -634,6 +635,7 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
         inventoryWeight = player.PlayerData.weight
         inventorySlots = player.PlayerData.slots
     elseif Inventories[identifier] then
+        local decayRate = Helpers.ParseDecayRate(identifier)
         inventory = Inventories[identifier].items
         inventoryWeight = Inventories[identifier].maxweight
         inventorySlots = Inventories[identifier].slots
@@ -647,7 +649,7 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
         return false
     end
 
-    Inventory.CheckItemsDecay(inventory)
+    Inventory.CheckItemsDecay(inventory, decayRate or 1)
     
     local totalWeight = Inventory.GetTotalWeight(inventory)
     if totalWeight + (itemInfo.weight * amount) > inventoryWeight then
@@ -663,6 +665,10 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
         info.quality = info.quality or 100
         info.lastUpdate = info.lastUpdate or os.time()
     end
+
+    local defaultInfo = itemInfo.info or {}
+
+    info = lib.table.merge(defaultInfo, info, false)
 
     local updated = false
     if not itemInfo.unique then
@@ -763,11 +769,12 @@ Inventory.RemoveItem = function(identifier, item, amount, slot, reason, isMove)
 
     local inventory
     local player = RSGCore.Functions.GetPlayer(identifier)
-	local inventoryItem = nil
+    local inventoryItem = nil
 
     if player then
         inventory = player.PlayerData.items
     elseif Inventories[identifier] then
+        local decayRate = Helpers.ParseDecayRate(identifier)
         inventory = Inventories[identifier].items
     elseif Drops[identifier] then
         inventory = Drops[identifier].items
@@ -778,7 +785,7 @@ Inventory.RemoveItem = function(identifier, item, amount, slot, reason, isMove)
         return false
     end
 
-    Inventory.CheckItemsDecay(inventory)
+    Inventory.CheckItemsDecay(inventory, decayRate or 1)
 
     amount = tonumber(amount) or 1
     
@@ -820,7 +827,7 @@ Inventory.RemoveItem = function(identifier, item, amount, slot, reason, isMove)
                 local removeAmount = math.min(available, amount - totalRemoved)
                 invItem.amount = invItem.amount - removeAmount
                 totalRemoved = totalRemoved + removeAmount
-				inventoryItem = invItem
+                inventoryItem = invItem
 
                 if invItem.amount <= 0 then
                     inventory[itemKey] = nil
@@ -848,9 +855,9 @@ Inventory.RemoveItem = function(identifier, item, amount, slot, reason, isMove)
 
     if player then 
         player.Functions.SetPlayerData('items', inventory)
-		-- Trigger event hook for external resources to handle custom 'after removal' logic
+        -- Trigger event hook for external resources to handle custom 'after removal' logic
         -- This event is not registered in rsg-inventory itself - it's for third-party resources
-		local data = {
+        local data = {
             amount = amount,
             slot = slot,
             info = inventoryItem.info
@@ -883,7 +890,8 @@ Inventory.GetInventory = function(identifier)
     if not Inventories[identifier] then
         return nil
     end
-    Inventory.CheckItemsDecay(Inventories[identifier].items)
+    local decayRate = Helpers.ParseDecayRate(identifier)
+    Inventory.CheckItemsDecay(Inventories[identifier].items, decayRate or 1)
     return Inventories[identifier]
 end
 

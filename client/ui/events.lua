@@ -82,7 +82,7 @@ RegisterNetEvent('rsg-inventory:client:ItemBox', function(itemData, type, amount
             item = itemData,
             type = type,
             amount = amount,
-			labels = buildLabels()
+            labels = buildLabels()
         })
 
         -- Update server hotbar if items were added or removed
@@ -190,8 +190,8 @@ RegisterNetEvent('rsg-inventory:client:openInventory', function(items, other)
     local token = exports['rsg-core']:GenerateCSRFToken()
     local Player = RSGCore.Functions.GetPlayerData()
     local config = require 'shared.config'
-	local function L(k, d) return locale(k) or d end
-	local labels = buildLabels()
+    local function L(k, d) return locale(k) or d end
+    local labels = buildLabels()
     SetNuiFocus(true, true) -- focus mouse and keyboard on NUI
 
     SendNUIMessage({
@@ -204,6 +204,6 @@ RegisterNetEvent('rsg-inventory:client:openInventory', function(items, other)
         token     = token,
         closeKey  = config.Keybinds.Close,
         cash      = Player.money.cash,         -- player's money
-		labels    = labels,
+        labels    = labels,
     })
 end)
