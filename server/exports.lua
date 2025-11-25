@@ -677,7 +677,7 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
                 slot = Inventory.GetFirstSlotByItemWithQuality(inventory, item, info.quality)
             else
                 slot = Inventory.GetFirstSlotByItem(inventory, item)
-            end
+            end			
         end
         if slot then
             for _, invItem in pairs(inventory) do
@@ -691,7 +691,12 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
     end
 
     if not updated then
-        slot = slot or Inventory.GetFirstFreeSlot(inventory, inventorySlots)
+        --slot = slot or Inventory.GetFirstFreeSlot(inventory, inventorySlots)
+		-- Если слот не подходит (нет или занят) → найти свободный
+		if not slot or inventory[slot] then
+			slot = Inventory.GetFirstFreeSlot(inventory, inventorySlots)
+		end
+		
         if not slot then
             -- If this is a player and not a forced add, try to drop on ground
             if player then

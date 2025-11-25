@@ -578,6 +578,7 @@ const InventoryContainer = Vue.createApp({
                 document.title = this.t.title;
             }
         },
+		/*
         updateInventory(data) {
             this.playerInventory = {};
 
@@ -597,7 +598,43 @@ const InventoryContainer = Vue.createApp({
                     }
                 }
             }
+        },*/
+		updateInventory(data) {
+            this.playerInventory = {};
+
+            if (data.inventory) {
+                if (Array.isArray(data.inventory)) {
+                    data.inventory.forEach((item) => {
+                        if (item && item.slot) {
+                            this.playerInventory[item.slot] = item;
+                        }
+                    });
+                } else if (typeof data.inventory === "object") {
+                    for (const key in data.inventory) {
+                        const item = data.inventory[key];
+                        if (item && item.slot) {
+                            this.playerInventory[item.slot] = item;
+                        }
+                    }
+                }
+            }
+            
+            // 3. УМНЫЙ СБРОС (Вставка функции clearInventorySelection)
+            if (this.selectedPlayerItemInfo) {
+                const slot = this.selectedPlayerItemInfo.slot;
+                const newItem = this.playerInventory[slot];
+
+                // Если предмет пропал ИЛИ изменился (другое имя)
+                if (!newItem || newItem.name !== this.selectedPlayerItemInfo.name) {
+                    // Вызываем вашу функцию очистки для инвентаря игрока
+                    this.clearInventorySelection(this.playerInventory);
+                } else {
+                    // Если предмет остался, обновляем данные (кол-во)
+                    this.selectedPlayerItemInfo = newItem;
+                }
+            }
         },
+
         async closeInventory() {
             let inventoryName = this.otherInventoryName;
             const wasHotbarEnabled = this.wasHotbarEnabled;
@@ -939,6 +976,11 @@ const InventoryContainer = Vue.createApp({
 				let amountToTransfer = 1;				
 				if (sourceItem.amount > 1) {
 					amountToTransfer = await this.askForAmount();
+					if (!amountToTransfer) {
+						//console.log("❌ Отменено пользователем");
+						this.clearDragData();
+						return;
+					}
 				}
 				// не даём указать больше, чем есть
 				if (amountToTransfer > item.amount) {
@@ -1069,6 +1111,11 @@ const InventoryContainer = Vue.createApp({
 				let amountToTransfer = sourceItem.amount;				
 				if (sourceItem.amount > 1 && this.dragStartInventoryType !== targetInventoryType) {
 					amountToTransfer = await this.askForAmount();
+					if (!amountToTransfer) {
+						//console.log("❌ Отменено пользователем");
+						this.clearDragData();
+						return;
+					}
 				}
 				
 				
@@ -1191,7 +1238,6 @@ const InventoryContainer = Vue.createApp({
 				//console.error("Нет количества")
                 return;
             }
-
             this.busy = true;
             try {
                 const response = await axios.post("https://rsg-inventory/AttemptPurchase", {

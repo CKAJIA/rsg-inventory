@@ -33,40 +33,40 @@ RegisterNetEvent('rsg-inventory:client:updateInventory', function()
 end)
 
 RegisterNetEvent('rsg-inventory:client:updateShopInventory', function(shopItems)
+    local RSGCore = exports['rsg-core']:GetCoreObject()
     local token = exports['rsg-core']:GenerateCSRFToken()
     local playerData = RSGCore.Functions.GetPlayerData()
-	local playerItems = playerData.items
-	local EnrichedPlayerItems = {}
-	
-	if shopItems then
-		for _, playerItem in pairs(playerItems) do
-			-- Проходим по предметам магазина (RegisteredShops[name].items)
-			local newItem = {}
-			for k, v in pairs(playerItem) do
-				newItem[k] = v
-			end
-			if playerItem and playerItem.name then			
-				for _, shopItem in pairs(shopItems) do
-					-- Если имя предмета совпадает
-					if shopItem and shopItem.name and playerItem.name == shopItem.name then
-						-- Добавляем цену и цену покупки в предмет игрока
-						if shopItem.buyPrice then
-							newItem.buyPrice = shopItem.buyPrice
-						end
-						break -- Выходим из внутреннего цикла, совпадение найдено
-					end
-				end			
-			end
-			table.insert(EnrichedPlayerItems, newItem)
-		end	
-		playerItems = EnrichedPlayerItems
-	end
-	
-	--print("Items = " .. json.encode(playerItems))
-	
+    local playerItems = playerData.items
+    
+    -- ОПТИМИЗАЦИЯ: Карта цен
+    local shopPriceCache = {}
+    if shopItems then
+        for _, shopItem in pairs(shopItems) do
+            if shopItem and shopItem.name and shopItem.buyPrice then
+                shopPriceCache[shopItem.name] = shopItem.buyPrice
+            end
+        end
+    end
+
+    local EnrichedPlayerItems = {}
+    
+    if playerItems then
+        for _, playerItem in pairs(playerItems) do
+            local newItem = {}
+            for k, v in pairs(playerItem) do newItem[k] = v end
+
+            -- Быстрая подстановка
+            if playerItem.name and shopPriceCache[playerItem.name] then
+                newItem.buyPrice = shopPriceCache[playerItem.name]
+            end
+            
+            table.insert(EnrichedPlayerItems, newItem)
+        end
+    end
+
     SendNUIMessage({
         action = 'update',
-        inventory = playerItems,
+        inventory = EnrichedPlayerItems,
         token = token,
     })
 end)

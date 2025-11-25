@@ -24,20 +24,7 @@ lib.callback.register('rsg-inventory:server:attemptPurchase', function(source, d
     local shopInfo = RegisteredShops[shopName]
     if not shopInfo then return false end
 
-	-- 🔹 Проверка режима
-	if data.shopMode and not config.IgnoreShopCategory then
-		if sourceInvType == "player" and data.shopMode == "buy" then
-			--TriggerClientEvent('ox_lib:notify', source, {title = Lang:t('notify.shopmodebuy'),	type = "error",	duration = 5000})
-			--return false
-			notifyPlayer(source, 'error.shopmodebuy') return false
-		end
-	
-		if sourceInvType == "other" and data.shopMode == "sell" then
-			--TriggerClientEvent('ox_lib:notify', source, {title = Lang:t('notify.shopmodesell'), type = "error", duration = 5000})
-			--return false
-			notifyPlayer(source, 'error.shopmodesell') return false
-		end
-	end
+	if not checkShopMode(source, data, sourceInvType) then return false end
 
     -- Distance check if shop has coordinates
     if shopInfo.coords then
@@ -76,12 +63,12 @@ lib.callback.register('rsg-inventory:server:attemptPurchase', function(source, d
                 if buyPrice < 0.01 then
                     notifyPlayer(source, 'error.worthless_item') return false
                 end
-
-                Inventory.RemoveItem(source, itemInfo.name, amount, itemInfo.slot, 'shop-sell')
-                Player.Functions.AddMoney('cash', buyPrice, 'shop-sell')
-                --TriggerClientEvent('rsg-inventory:client:updateInventory', source)
+				
+				Inventory.RemoveItem(source, itemInfo.name, amount, itemInfo.slot, 'shop-sell')
+				Player.Functions.AddMoney('cash', buyPrice, 'shop-sell')
+				--TriggerClientEvent('rsg-inventory:client:updateInventory', source)
 				TriggerClientEvent('rsg-inventory:client:updateShopInventory', source, shopInfo.items)
-                return true
+				return true
             end
         end
 
@@ -121,42 +108,91 @@ lib.callback.register('rsg-inventory:server:attemptPurchase', function(source, d
 end)
 
 lib.callback.register('rsg-inventory:server:checkPurchase', function(source, data)
-	local itemInfo = data.item
-    local sinvtype = data.sourceinvtype
-    local targetSlot = data.targetslot
-	local shop = string.gsub(data.shop, '^shop%-', '')
+	local itemInfo 		= data.item
+	local amount        = 1 --проверяем хотябы для 1 единицы
+	local shop 			= string.gsub(data.shop, '^shop%-', '')
+    local sourceInvType = data.sourceinvtype
+    local targetSlot 	= data.targetslot
 	
+	local Player = RSGCore.Functions.GetPlayer(source)
+    if not Player then return false end
 	
 	local shopInfo = RegisteredShops[shop]
     if not shopInfo then return false end
 	
-	-- 🔹 Проверка режима
-	if data.shopMode and not config.IgnoreShopCategory then
-		if sinvtype == "player" and data.shopMode == "buy" then
-			notifyPlayer(source, 'error.shopmodebuy') return false
-		end
+	if not checkShopMode(source, data, sourceInvType) then return false end
 	
-		if sinvtype == "other" and data.shopMode == "sell" then
-			notifyPlayer(source, 'error.shopmodesell') return false
-		end
-	end
-	
-	if sinvtype == 'player' then
-        for slot, item in ipairs(shopInfo.items) do 
-            if itemInfo.name == item.name and item.buyPrice ~= nil then 
-
-                if itemInfo.info.quality and itemInfo.info.quality < (item.minQuality or 1) then
+	-- Selling items to shop
+	if sourceInvType == 'player' then
+        for slot, shopItem in ipairs(shopInfo.items) do 
+            if itemInfo.name == shopItem.name and shopItem.buyPrice ~= nil then 
+				-- Quality check
+                if itemInfo.info.quality and itemInfo.info.quality < (shopItem.minQuality or 1) then
 					notifyPlayer(source, 'error.quality_too_low') return false
                 end
+				
+				-- Max stock check
+                if shopItem.maxStock and shopItem.maxStock < (shopItem.amount + amount) then
+                    notifyPlayer(source, 'error.shop_fully_stocked') return false
+                end
 
-                if Inventory.HasItem(source, itemInfo.name, 1) then
+                if Inventory.HasItem(source, itemInfo.name, amount) then
                     return true
+                end
+				
+				-- Update shop stock and calculate buy price
+                if shopItem.amount then shopItem.amount = shopItem.amount + amount end
+                local buyPrice = shopItem.buyPrice * amount
+                if itemInfo.info.quality then
+                    buyPrice = buyPrice * (itemInfo.info.quality / 100)
+                end
+                buyPrice = math.round(buyPrice, 2)
+
+                if buyPrice < 0.01 then
+                    notifyPlayer(source, 'error.worthless_item') return false
                 end
             end
         end
 
 		notifyPlayer(source, 'error.shop_does_not_buy') return false
     end
+	--TODO: Надо тут посидеть подумать чтобы если мы продаем в магазин почему не можем продать при перетаскивании.
+	-- Buying items from shop
+    local shopSlot = shopInfo.items[itemInfo.slot]
+    if not shopSlot or shopSlot.name ~= itemInfo.name then return false end
+
+    if shopSlot.amount and amount > shopSlot.amount then
+        notifyPlayer(source, 'error.cannot_purchase_more_than_stock') return false
+    end
+
+    if not Inventory.CanAddItem(source, itemInfo.name, amount) then
+        notifyPlayer(source, 'error.cannot_carry') return false
+    end
+
+    if not shopSlot.price then
+        notifyPlayer(source, 'info.no_price_or_not_for_sale') return false
+    end
+
+    local price = math.round(shopSlot.price * amount, 2)
+    if Player.PlayerData.money.cash < price then
+        notifyPlayer(source, 'error.not_enough_money') return false
+    end
 	
 	return true
 end)
+
+-- 🔹 Проверка режима
+function checkShopMode(source, data, sourceInvType)
+	-- 🔹 Проверка режима
+	if data.shopMode and not config.IgnoreShopCategory then
+		if sourceInvType == "player" and data.shopMode == "buy" then
+			notifyPlayer(source, 'error.shopmodebuy') return false
+		end
+	
+		if sourceInvType == "other" and data.shopMode == "sell" then
+			notifyPlayer(source, 'error.shopmodesell') return false
+		end
+	end
+	
+	return true
+end
