@@ -207,3 +207,15 @@ RegisterNetEvent('rsg-inventory:client:openInventory', function(items, other)
         labels    = labels,
     })
 end)
+
+------------------------------------------------
+-- on money change
+------------------------------------------------
+RegisterNetEvent('hud:client:OnMoneyChange', function(type, amount, isMinus)
+	local Player = RSGCore.Functions.GetPlayerData()
+    
+	SendNUIMessage({
+        action = 'updateMoney',
+        cash      = Player.money.cash,         -- player's money
+    })
+end)

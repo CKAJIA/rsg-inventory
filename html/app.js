@@ -2205,6 +2205,9 @@ const InventoryContainer = Vue.createApp({
                         this.hotbarItems = event.data.items;
                     }
                     break;
+				case "updateMoney":
+					this.cash = event.data.cash;
+					break;
                 default:
                     console.warn(`Unexpected action: ${event.data.action}`);
             }
