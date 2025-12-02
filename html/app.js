@@ -424,9 +424,9 @@ const InventoryContainer = Vue.createApp({
                     weight: 'Weight',
                     id: 'ID',
                     cash: 'Cash',
-                    received: 'Получено',
-                    used: 'Использовано',
-                    removed: 'Удалено',
+                    received: 'Received',
+                    used: 'Used',
+                    removed: 'Removed',
 					amount_start: 'Amount',
 					amount_end: '',
 					quality: 'Quality',
@@ -1538,6 +1538,10 @@ const InventoryContainer = Vue.createApp({
         showItemNotification(itemData) {
 			const item = itemData.item || {};
             const rawType = (itemData.type || '').toLowerCase();
+			
+			if (itemData.labels) {
+                this.t = { ...this.t, ...itemData.labels };
+            }
 			
             this.notificationText = item.label || "";
             this.notificationImage = item.image ? "images/" + item.image : "";
