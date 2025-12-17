@@ -73,4 +73,42 @@ return {
     -- Should items in player inventory decay while player is offline
     ItemsDecayWhileOffline = true,
     IgnoreShopCategory = false, --включить покупку и продажу независимо от категории магазина
+	
+	
+	
+	
+	
+	
+	categories = {
+		--порядок в котором категории показываются
+		order = { "all", "clothes", "weapons", "provision", "remedies", "ingridient", "herbs", "animals", "material", "kit", "valuable", "documents", "collections", "horse", "misc", "sell" },
+		--какие предметы к какой категории относятся исходя из type = 'item'
+		--например type = 'provision' - вставит все предметы с этим type в категорию provision
+		--все доступные категории приписаны выше.
+		map = {
+			weapon = "weapons",
+			equipment = "weapons",
+			weapon_thrown = "weapons",
+			ammo = "weapons",
+			provision = "provision",
+			pears = "provision",
+			bread = "provision",
+			water = "provision",
+			hat = "clothes",
+			jacket = "clothes",
+			boots = "clothes",
+			clothes = "clothes",
+			butcher_item_sb = "material",
+			bt_item = "material",
+			butcher_item = "material",
+			fisher_item = "ingridient",
+			traper_item = "ingridient",
+			herbs = "ingridient",
+			med = "remedies",
+			bandage = "remedies",
+			herbs = "ingridient",
+			
+			default = "misc",
+		}
+	},
 }

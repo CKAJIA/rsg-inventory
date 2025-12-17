@@ -1,4 +1,5 @@
 // фиксированный порядок категорий
+/**
 const CATEGORY_ORDER = [
     "all",
     "clothes",
@@ -36,6 +37,7 @@ const CATEGORY_MAP = {
   hat: "clothes",
   jacket: "clothes",
   boots: "clothes",
+  clothes: "clothes",
   
   butcher_item_sb: "material",
   bt_item: "material",
@@ -51,7 +53,7 @@ const CATEGORY_MAP = {
   // По умолчанию
   default: "misc"
 };
-
+**/
 
 const InventoryContainer = Vue.createApp({
     data() {
@@ -178,7 +180,8 @@ const InventoryContainer = Vue.createApp({
 		
 			// возвращаем только те категории, которые есть в CATEGORY_ORDER, 
 			// и в правильном порядке
-			return CATEGORY_ORDER.filter(cat => found.includes(cat) || cat === "all");
+			//return CATEGORY_ORDER.filter(cat => found.includes(cat) || cat === "all");
+			return (this.categoryOrder || []).filter(cat => found.includes(cat) || cat === "all");
 		},
 		
 		availableOtherCategories() {
@@ -203,7 +206,8 @@ const InventoryContainer = Vue.createApp({
 			
 			const found = Array.from(cats);
 			
-			return CATEGORY_ORDER.filter(cat => found.includes(cat) || cat === "all");
+			//return CATEGORY_ORDER.filter(cat => found.includes(cat) || cat === "all");
+			return (this.categoryOrder || []).filter(cat => found.includes(cat) || cat === "all");
 		},
 
 		filteredPlayerSlots() {
@@ -403,6 +407,9 @@ const InventoryContainer = Vue.createApp({
                 mouseDownX: 0,
                 mouseDownY: 0,
 				
+				categoryOrder: ["all", "clothes", "weapons", "provision", "remedies", "ingridient", "herbs", "animals", "material", "kit", "valuable", "documents", "collections", "horse", "misc", "sell"],
+				categoryMap: { default: "misc" },
+				
 				
 				cash: 0,
 				// -------- Localisation UI (fallback EN) --------
@@ -510,6 +517,14 @@ const InventoryContainer = Vue.createApp({
 			this.playerId = data.playerId || null;
             this.playerInventory = {};
             this.otherInventory = {};
+			
+			
+			if (data.categories) {
+				this.categoryOrder = data.categories.order || this.categoryOrder
+				this.categoryMap = data.categories.map || this.categoryMap
+			}
+			
+			
 			
 			// -------- Hydrating labels from Lua --------
             if (data.labels) {
@@ -2025,10 +2040,19 @@ const InventoryContainer = Vue.createApp({
 		
 		
 		// вернуть общую категорию по предмету
-		getMainCategory(item) {
+/**		getMainCategory(item) {
 		// возвращаем основную категорию по типу (не помещаем сюда "sell")
 			if (!item || !item.type) return CATEGORY_MAP.default;
 			return CATEGORY_MAP[item.type] || CATEGORY_MAP.default;
+		},
+**/		
+		getMainCategory(item) {
+			// возвращаем основную категорию по типу (не помещаем сюда "sell")
+			const map = this.categoryMap || {};
+			const def = map.default || "misc";
+			
+			if (!item || !item.type) return def;
+			return map[item.type] || def;
 		},
 		
 		// красивое имя для центра

@@ -195,16 +195,17 @@ RegisterNetEvent('rsg-inventory:client:openInventory', function(items, other)
     SetNuiFocus(true, true) -- focus mouse and keyboard on NUI
 
     SendNUIMessage({
-        action    = 'open',
-        inventory = items,
-        slots     = Player.slots,          -- max inventory slots
-        maxweight = Player.weight,     -- max inventory weight
-        playerId  = Player.source or Player.id or Player.citizenid, -- unique player identifier
-        other     = other,                 -- context, e.g., trunk inventory
-        token     = token,
-        closeKey  = config.Keybinds.Close,
-        cash      = Player.money.cash,         -- player's money
-        labels    = labels,
+        action     = 'open',
+		categories = config.categories,
+        inventory  = items,
+        slots      = Player.slots,      -- max inventory slots
+        maxweight  = Player.weight,     -- max inventory weight
+        playerId   = Player.source or Player.id or Player.citizenid, -- unique player identifier
+        other      = other,             -- context, e.g., trunk inventory
+        token      = token,
+        closeKey   = config.Keybinds.Close,
+        cash       = Player.money.cash,         -- player's money
+        labels     = labels,		
     })
 end)
 
