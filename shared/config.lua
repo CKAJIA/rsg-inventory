@@ -106,7 +106,6 @@ return {
 			herbs = "ingridient",
 			med = "remedies",
 			bandage = "remedies",
-			herbs = "ingridient",
 			
 			default = "misc",
 		}
