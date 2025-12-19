@@ -1724,69 +1724,70 @@ const InventoryContainer = Vue.createApp({
             if (!item) {
                 return "";
             }
-/**            let content = `<div class="custom-tooltip"><div class="tooltip-header">${item.label}</div><hr class="tooltip-divider">`;
-            const description = item.info && item.info.description ? item.info.description.replace(/\n/g, "<br>") : item.description ? item.description.replace(/\n/g, "<br>") : "No description available.";
 
-            if (item.info && Object.keys(item.info).length > 0) {
-                for (const [key, value] of Object.entries(item.info)) {
-                    if (key !== "description" && key !== "lastUpdate") {
-                        let valueStr = value;
-                        if (key === "attachments") {
-                            valueStr = Object.keys(value).length > 0 ? "true" : "false";
-                        }
-                        content += `<div class="tooltip-info"><span class="tooltip-info-key">${this.formatKey(key)}:</span> ${valueStr}</div>`;
-                    }
-                }
-            }
-
-            content += `<div class="tooltip-description">${description}</div>`;
-			
-			if (item.amount !== undefined && item.amount > 1) {
-				content += `<div class="tooltip-info-price"><span class="tooltip-info-price-key">${"Количество"}:</span> ${item.amount}<span class="tooltip-info-price-dollar"> ${" шт."}</span></div>`;
-			}
-			
-			if (item.price !== undefined && item.price > 0) {
-				//console.log(item.price)
-				content += `<div class="tooltip-info-price"><span class="tooltip-info-price-key">${"Цена покупки"}:</span> ${item.price}<span class="tooltip-info-price-dollar"> ${" $"}</span></div>`;
-			}
-			if (item.buyPrice !== undefined && item.buyPrice > 0) {
-				//console.log(item.buyPrice)
-				content += `<div class="tooltip-info-price"><span class="tooltip-info-price-key">${"Цена продажи"}:</span> ${item.buyPrice}<span class="tooltip-info-price-dollar"> ${" $"}</span></div>`;
-			}
-			
-            content += `<div class="tooltip-weight"><i class="fas fa-weight-hanging"></i> ${item.weight !== undefined && item.weight !== null ? (item.weight / 1000).toFixed(1) : "N/A"}kg</div>`;
-
-            content += `</div>`;
-**/
             let content = `<div class="custom-tooltip"><div class="tooltip-header">${item.label}</div><hr class="tooltip-divider">`;
-        
-            const description = item.info?.description?.replace(/\n/g, "<br>") 
-                || item.description?.replace(/\n/g, "<br>") 
-                || "No description available.";
-        
-            const renderInfo = (obj, indent = 0) => {
-                let html = "";
-                for (const [key, value] of Object.entries(obj)) {
-                    if (key === "description" || key === "lastUpdate" || key === "componentshash" || key === "components") continue;
-        
-                    const padding = "&nbsp;".repeat(indent * 4);
-
-                    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-                        html += `<div class="tooltip-info"><span class="tooltip-info-key">${padding}${this.formatKey(key)}</span></div>`;
-                        html += renderInfo(value, indent + 1);
-                    } else {
-                        html += `<div class="tooltip-info"><span class="tooltip-info-key">${padding}${this.formatKey(key)}</span> ${value}</div>`;
-                    }
-                }
-                return html;
-            };
-            
-            if (item.info && Object.keys(item.info).length > 0) {
-                content += renderInfo(item.info);
-            }
-        
-            content += `<div class="tooltip-description">${description}</div>`;
 			
+			// Проверяем, является ли предмет одеждой
+			if (this.isClothingItem(item)) {
+				// Для одежды - упрощённый tooltip
+				const info = item.info || {};
+				const equipped = info._e || info._equipped || info.equipped;
+				
+				if (equipped) {
+					content += `<div class="tooltip-info" style="color: #4CAF50; font-weight: bold;">● ${this.t.equipped || 'Надето'}</div>`;
+				} else {
+					content += `<div class="tooltip-info" style="color: #9e9e9e;">○ ${this.t.in_bag || 'В сумке'}</div>`;
+				}
+				
+				// Показываем описание если есть
+				const description = item.info?.description?.replace(/\n/g, "<br>") 
+					|| item.description?.replace(/\n/g, "<br>") 
+					|| "";
+				
+				if (description) {
+					content += `<div class="tooltip-description">${description}</div>`;
+				}
+				
+			} else {
+				// Для остальных предметов - стандартная логика
+				const description = item.info?.description?.replace(/\n/g, "<br>") 
+					|| item.description?.replace(/\n/g, "<br>") 
+					|| "No description available.";
+			
+				const renderInfo = (obj, indent = 0) => {
+					let html = "";
+					// Поля которые нужно скрыть (технические)
+					const hiddenFields = [
+						'description', 'lastUpdate', 'componentshash', 'components',
+						// Поля одежды (на случай если предмет не определился как одежда)
+						'_c', '_h', '_m', '_t', '_g', '_e', '_category', '_hash', 
+						'_model', '_texture', '_isMale', '_equipped',
+						'category', 'hash', 'model', 'texture', 'isMale', 'equipped'
+					];
+					
+					for (const [key, value] of Object.entries(obj)) {
+						if (hiddenFields.includes(key)) continue;
+			
+						const padding = "&nbsp;".repeat(indent * 4);
+	
+						if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+							html += `<div class="tooltip-info"><span class="tooltip-info-key">${padding}${this.formatKey(key)}</span></div>`;
+							html += renderInfo(value, indent + 1);
+						} else {
+							html += `<div class="tooltip-info"><span class="tooltip-info-key">${padding}${this.formatKey(key)}</span> ${value}</div>`;
+						}
+					}
+					return html;
+				};
+				
+				if (item.info && Object.keys(item.info).length > 0) {
+					content += renderInfo(item.info);
+				}
+			
+				content += `<div class="tooltip-description">${description}</div>`;
+			}
+			
+			// Общие поля для всех предметов
 			if (item.amount !== undefined && item.amount > 1) {
 				content += `<div class="tooltip-info-price"><span class="tooltip-info-price-key">${this.t.amount}:</span><span class="tooltip-info-amount"> ${item.amount}</span><span class="tooltip-info-price-dollar"> ${this.t.amount_end}</span></div>`;
 			}
@@ -1803,6 +1804,75 @@ const InventoryContainer = Vue.createApp({
         
             return content;
         },
+		
+		// Добавьте эту новую функцию в methods (после generateTooltipContent):
+		isClothingItem(item) {
+			if (!item) return false;
+			
+			// Список имён предметов одежды
+			const clothingItems = [
+				'clothing_item',
+				'clothing_hats',
+				'clothing_shirts_full',
+				'clothing_pants',
+				'clothing_boots',
+				'clothing_vests',
+				'clothing_coats',
+				'clothing_coats_closed',
+				'clothing_gloves',
+				'clothing_neckwear',
+				'clothing_masks',
+				'clothing_eyewear',
+				'clothing_gunbelts',
+				'clothing_satchels',
+				'clothing_skirts',
+				'clothing_chaps',
+				'clothing_spurs',
+				'clothing_suspenders',
+				'clothing_belts',
+				'clothing_cloaks',
+				'clothing_ponchos',
+				'clothing_neckties',
+				'clothing_gauntlets',
+				'clothing_holsters_knife',
+				'clothing_loadouts',
+				'clothing_holsters_left',
+				'clothing_holsters_right',
+				'clothing_holsters_crossdraw',
+				'clothing_aprons',
+				'clothing_boot_accessories',
+				'clothing_spats',
+				'clothing_jewelry_rings_right',
+				'clothing_jewelry_rings_left',
+				'clothing_jewelry_bracelets',
+				'clothing_talisman_holster',
+				'clothing_talisman_wrist',
+				'clothing_belt_buckles',
+				'clothing_bows',
+				'clothing_hair_accessories',
+				'clothing_dresses',
+			];
+			
+			// Проверка по имени предмета
+			if (item.name && clothingItems.includes(item.name)) return true;
+			
+			// Проверка по префиксу имени
+			if (item.name && item.name.startsWith('clothing_')) return true;
+			
+			// Проверка по наличию характерных полей одежды в info
+			if (item.info) {
+				const hasClothingFields = item.info._c !== undefined || 
+										item.info._category !== undefined || 
+										item.info._h !== undefined ||
+										item.info._m !== undefined;
+				if (hasClothingFields) return true;
+			}
+			
+			// Проверка по типу предмета
+			if (item.type === 'clothes' || item.type === 'clothing') return true;
+			
+			return false;
+		},
         /**formatKey(key) {
             return key.replace(/_/g, " ").charAt(0).toUpperCase() + key.slice(1);
         },**/
