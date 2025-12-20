@@ -161,6 +161,7 @@ function buildLabels()
 		enter_ammount = L('ui.enter_ammount', 'Enter amount'),
 		confirm = L('ui.confirm', 'Confirm'),
 		cancel = L('ui.cancel', 'Cancel'),
+		equipped= L('ui.equipped', 'Equipped'),
 		
 		categories = {
 			all = L('ui.categories.all', 'All'),

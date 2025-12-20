@@ -448,6 +448,7 @@ const InventoryContainer = Vue.createApp({
 					enter_ammount: "Enter amount",
 					confirm: "Confirm",
 					cancel: "Cancel",
+					equipped: "Equipped",
 					
 					categories: {
 						all: "All",
