@@ -78,8 +78,8 @@
 					<div class="player-inventory">
 						<div class="item-grid" data-inventory="player">
 							<div
-								v-for="slot in filteredPlayerSlots"
-								:key="slot"
+								v-for="(slot, idx) in filteredPlayerSlots"
+								:key="slot ? `p-${slot}` : `p-empty-${idx}`"
 								class="item-slot"
 								:data-slot="slot"
 								:class="{ 'dark': isShopInventory && getItemInSlot(slot, 'player') && getItemInSlot(slot, 'player').buyPrice,
@@ -91,9 +91,12 @@
 								<div class="item-slot-key" v-if="slot && getItemInSlot(slot, 'player') && slot <= 5 && !isShopInventory">
 									<p>{{ slot }}</p>
 								</div>
+								<!-- подложка для экипировки -->
+								<div class="item-slot-img-equip" v-if="(item = getItemInSlot(slot, 'player')) && isClothingItem(item) && isEquipped(item)"></div>
+								
 								<div class="item-slot-img" v-if="getItemInSlot(slot, 'player')">
 									<img :src="'images/' + getItemInSlot(slot, 'player').image" alt="" />
-								</div>
+								</div>								
 								<div v-if="getItemInSlot(slot, 'player') && getItemInSlot(slot, 'player').squality" class="item-quality-stars">
 									<img :src="'./assets/quality_0' + getItemInSlot(slot, 'player').squality + '.png'" alt="" />
 								</div>

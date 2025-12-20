@@ -594,26 +594,6 @@ const InventoryContainer = Vue.createApp({
             }
         },
 		/*
-        updateInventory(data) {
-            this.playerInventory = {};
-
-            if (data.inventory) {
-                if (Array.isArray(data.inventory)) {
-                    data.inventory.forEach((item) => {
-                        if (item && item.slot) {
-                            this.playerInventory[item.slot] = item;
-                        }
-                    });
-                } else if (typeof data.inventory === "object") {
-                    for (const key in data.inventory) {
-                        const item = data.inventory[key];
-                        if (item && item.slot) {
-                            this.playerInventory[item.slot] = item;
-                        }
-                    }
-                }
-            }
-        },*/
 		updateInventory(data) {
             this.playerInventory = {};
 
@@ -648,7 +628,60 @@ const InventoryContainer = Vue.createApp({
                     this.selectedPlayerItemInfo = newItem;
                 }
             }
-        },
+        },*/
+		updateInventory(data) {
+			if (!data || !data.inventory) {
+				return; // безопасно: не чистим UI, если пакет без inventory
+			}
+			const next = {};
+			
+			if (Array.isArray(data.inventory)) {
+				data.inventory.forEach((item) => {
+					if (item?.slot) next[item.slot] = item;
+				});
+			} else if (typeof data.inventory === "object") {
+				for (const k in data.inventory) {
+					const item = data.inventory[k];
+					if (item?.slot) next[item.slot] = item;
+				}
+			}
+		
+			// 1) удалить отсутствующие слоты
+			for (const slotStr in this.playerInventory) {
+				const slot = Number(slotStr);
+				if (!next[slot]) delete this.playerInventory[slot];
+			}
+		
+			// 2) обновить/добавить слоты (важно: сохраняем ссылку на объект)
+			for (const slotStr in next) {
+				const slot = Number(slotStr);
+				if (this.playerInventory[slot]) {
+				Object.assign(this.playerInventory[slot], next[slot]);
+				} else {
+				this.playerInventory[slot] = next[slot];
+				}
+			}
+		
+			// 3) УМНЫЙ СБРОС (Вставка функции clearInventorySelection)
+			if (this.selectedPlayerItemInfo) {
+				const slot = this.selectedPlayerItemInfo.slot;
+				const newItem = this.playerInventory[slot];
+				
+				//Если предмет пропал ИЛИ изменился (другое имя)
+				if (!newItem || newItem.name !== this.selectedPlayerItemInfo.name) 
+				{
+					// Вызываем вашу функцию очистки для инвентаря игрока
+					this.clearInventorySelection(this.playerInventory);
+				} else {
+					// Если предмет остался, обновляем данные (кол-во)
+					this.selectedPlayerItemInfo = newItem;
+				}
+			}
+		},
+		
+		isEquipped(item) {
+			return !!(item?.info?._e || item?.info?._equipped || item?.info?.equipped);
+		},
 
         async closeInventory() {
             let inventoryName = this.otherInventoryName;
@@ -1734,9 +1767,7 @@ const InventoryContainer = Vue.createApp({
 				const equipped = info._e || info._equipped || info.equipped;
 				
 				if (equipped) {
-					content += `<div class="tooltip-info" style="color: #4CAF50; font-weight: bold;">● ${this.t.equipped || 'Надето'}</div>`;
-				} else {
-					content += `<div class="tooltip-info" style="color: #9e9e9e;">○ ${this.t.in_bag || 'В сумке'}</div>`;
+					content += `<div class="tooltip-info" style="color: #FFD700; font-weight: bold;"> ${this.t.equipped || 'Надето'}</div>`;
 				}
 				
 				// Показываем описание если есть
