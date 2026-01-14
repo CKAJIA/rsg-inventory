@@ -62,3 +62,26 @@ CreateThread(function()
         end
     end
 end)
+
+-- ================================================
+-- SHIW-NOTEPAD INTEGRATION
+-- ================================================
+
+-- Прикрепить блокнот
+RegisterNUICallback('attachNotepad', function(data, cb)
+    local item = data.item
+    local slot = data.slot    
+    if item and item.name == 'notepad' then
+        TriggerEvent('shiw-notepad:client:attach', slot)
+    end    
+    cb('ok')
+end)
+-- Переименовать блокнот
+RegisterNUICallback('renameNotepad', function(data, cb)
+    local item = data.item
+    local slot = data.slot    
+    if item and item.name == 'notepad' then
+        TriggerEvent('shiw-notepad:client:rename', slot)
+    end   
+    cb('ok')
+end)

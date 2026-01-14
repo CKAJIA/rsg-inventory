@@ -1,27 +1,31 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
 
+local resourceName = GetCurrentResourceName()
+local githubRawBase = 'https://raw.githubusercontent.com/Rexshack-RedM/rsg-versioncheckers/main/'
+
 -----------------------------------------------------------------------
 -- version checker
 -----------------------------------------------------------------------
-local function versionCheckPrint(_type, log)
-    local color = _type == 'success' and '^2' or '^1'
-
-    print(('^5['..GetCurrentResourceName()..']%s %s^7'):format(color, log))
+local function printLog(type, message)
+    local color = (type == 'success' and '^2') or (type == 'warning' and '^3') or '^1'
+    print(('^5[%s]%s %s^7'):format(resourceName, color, message))
 end
 
 local function CheckVersion()
-    PerformHttpRequest('https://raw.githubusercontent.com/Rexshack-RedM/rsg-versioncheckers/main/'..GetCurrentResourceName()..'/version.txt', function(err, text, headers)
-        local currentVersion = GetResourceMetadata(GetCurrentResourceName(), 'version')
+	local versionUrl = githubRawBase .. resourceName .. '/version.txt'
+    PerformHttpRequest(versionUrl, function(statusCode, remoteVersion, headers)
+        local currentVersion = GetResourceMetadata(resourceName, 'version')
 
-        if not text then
-            versionCheckPrint('error', 'Currently unable to run a version check.')
+        if not remoteVersion then
+			printLog('error', 'Unable to read current resource version from fxmanifest.lua!')
             return
         end
 
-        if text == currentVersion then
-            versionCheckPrint('success', ('You are running the latest version --> %s'):format(currentVersion))
+        if remoteVersion == currentVersion then
+			printLog('success', ('You are running the latest version --> %s'):format(currentVersion))
         else
-            versionCheckPrint('error', ('You are currently running an outdated version --> %s, please update to version --> %s'):format(currentVersion, text))
+			printLog('error', ('OUTDATED --> %s! Please update to version --> %s'):format(currentVersion, remoteVersion))
+			printLog('error', 'Download from: https://github.com/Rexshack-RedM/'..resourceName..'')
         end
     end)
 end

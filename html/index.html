@@ -175,7 +175,7 @@
 						<div class="item-amount-quantity">
 							<div class="item-quality">
 								<div class="item-quality1" v-if="selectedPlayerItemInfo && selectedPlayerItemInfo.info.quality">
-									{{ t.quality }} {{ selectedPlayerItemInfo.info.quality }} %
+									{{ t.quality }} {{ (selectedPlayerItemInfo.info.quality).toFixed(2) }} %
 								</div>
 							</div>
 							<div class="item-quantity">
@@ -326,7 +326,7 @@
 						<div class="item-amount-quantity">
 							<div class="item-quality">
 								<div class="item-quality1" v-if="selectedOtherItemInfo && selectedOtherItemInfo.info.quality">
-									{{ t.quality }} {{ selectedOtherItemInfo.info.quality }}%
+									{{ t.quality }} {{ (selectedOtherItemInfo.info.quality).toFixed(2) }}%
 								</div>
 							</div>
 							<div class="item-quantity">
@@ -337,6 +337,205 @@
 						</div>
 					</div>
 				</div>
+				
+				
+				
+				
+				
+				
+				<div class="trade-inventory-bg" v-if="!isTradeInventoryEmpty && isOtherInventoryEmpty">
+					<div class="trade-inventory-header">
+						<div class="labels-container">
+							<div class="inventory-label">
+								<p>{{ tradeInventoryLabel }}</p>
+							</div>
+						</div>
+					</div>
+					<div class="divider"></div>
+					<div class="trade-controls-section">
+						<div class="trade-top-bar">
+							<button class="trade-side-button" @click="cycleTradeCategory(-1)">A</button>
+							<div class="trade-center-text">{{ currentTradeCategoryTitle }}</div>
+							<button class="trade-side-button" @click="cycleTradeCategory(1)">D</button>
+						</div>
+						<div class="trade-cats">
+							<button
+								v-for="cat in availableTradeCategories"
+								:key="cat"
+								class="catbutton-icon"
+								:id="'icon-' + cat"
+								@click="setTradeCategory(cat)"
+								:class="{ active: currentTradeCategory === cat }"
+								:title="categoryTitle(cat)">
+							</button>
+						</div>
+					</div>
+					<div class="divider"></div>
+					<div class="trade-inventory" v-if="!isTradeInventoryEmpty && isOtherInventoryEmpty">
+						<div class="item-grid player-trade-item-grid" data-inventory="trade">
+							<div v-for="slot in filteredTradeSlots" :key="slot" class="item-slot" v-tooltip.right-end="{content: generateTooltipContent(getItemInSlot(slot, 'trade')), html: true}" :data-slot="slot" @mousedown="event => handleMouseDown(event, slot, 'trade')" @dragover.prevent>
+								<div class="item-slot-img" v-if="getItemInSlot(slot, 'trade')">
+									<img :src="'images/' + getItemInSlot(slot, 'trade').image" alt="" />
+								</div>
+								<div v-if="getItemInSlot(slot, 'trade') && getItemInSlot(slot, 'trade').squality" class="item-quality-stars">
+									<img :src="'./assets/quality_0' + getItemInSlot(slot, 'trade').squality + '.png'" alt="" />
+								</div>
+								<!--<div class="item-slot-amount" v-if="!isShopInventory && getItemInSlot(slot, 'trade') && typeof getItemInSlot(slot, 'trade').amount === 'number'" :class="{'text-red': getItemInSlot(slot, 'trade').amount < 1}">-->
+								<div class="item-slot-amount" v-if="getItemInSlot(slot, 'trade') && typeof getItemInSlot(slot, 'trade').amount === 'number'" :class="{'text-red': getItemInSlot(slot, 'trade').amount < 1}">
+									<p>
+										{{ getItemInSlot(slot, 'trade').amount }}{{ typeof getItemInSlot(slot, 'trade').maxStock === 'number' ? '/' + getItemInSlot(slot, 'trade').maxStock : '' }}
+									</p>
+								</div>
+								<div v-if="isShopInventory && currentShopMode === 'buy' && getItemInSlot(slot, 'trade') && getItemInSlot(slot, 'trade').price" class="item-price">
+									<p>{{ getItemInSlot(slot, 'trade').price % 1 === 0 ? getItemInSlot(slot, 'trade').price : getItemInSlot(slot, 'trade').price.toFixed(2) }} $</p>
+								</div>
+								<div v-if="isShopInventory && currentShopMode === 'sell' && getItemInSlot(slot, 'trade') && getItemInSlot(slot, 'trade').buyPrice" class="item-sell-price">
+									<p>{{ getItemInSlot(slot, 'trade').buyPrice % 1 === 0 ? getItemInSlot(slot, 'trade').buyPrice : getItemInSlot(slot, 'trade').buyPrice.toFixed(2) }} $</p>
+								</div>
+								<div class="item-slot-durability" v-if="getItemInSlot(slot, 'trade') && 'quality' in getItemInSlot(slot, 'trade').info">
+									<div
+										class="item-slot-durability-fill"
+										v-if="getItemInSlot(slot, 'trade').info && 'quality' in getItemInSlot(slot, 'trade').info"
+										:style="{ width: (getItemInSlot(slot, 'trade').info.quality / 100) * 100 + '%' }"
+										:class="{
+											'high': getItemInSlot(slot, 'trade').info.quality > 75,
+											'medium': getItemInSlot(slot, 'trade').info.quality <= 75 && getItemInSlot(slot, 'trade').info.quality > 25,
+											'low': getItemInSlot(slot, 'trade').info.quality <= 25
+										}"
+									></div>
+									<div class="item-slot-durability-fill" v-else style="width: 0%"></div>
+								</div>
+							</div>
+						</div>
+						<div class="divider-bottom"></div>
+						<div class="target-player-info">
+							<div class="target-player-name">
+								Target Player Name
+							</div>
+						</div>
+						<div class="divider"></div>
+						<div class="item-grid target-trade-item-grid" data-inventory="trade">
+							<div v-for="slot in filteredTradeSlots" :key="slot" class="item-slot" v-tooltip.right-end="{content: generateTooltipContent(getItemInSlot(slot, 'trade')), html: true}" :data-slot="slot" @mousedown="event => handleMouseDown(event, slot, 'trade')" @dragover.prevent>
+								<div class="item-slot-img" v-if="getItemInSlot(slot, 'trade')">
+									<img :src="'images/' + getItemInSlot(slot, 'trade').image" alt="" />
+								</div>
+								<div v-if="getItemInSlot(slot, 'trade') && getItemInSlot(slot, 'trade').squality" class="item-quality-stars">
+									<img :src="'./assets/quality_0' + getItemInSlot(slot, 'trade').squality + '.png'" alt="" />
+								</div>
+								<!--<div class="item-slot-amount" v-if="!isShopInventory && getItemInSlot(slot, 'trade') && typeof getItemInSlot(slot, 'trade').amount === 'number'" :class="{'text-red': getItemInSlot(slot, 'trade').amount < 1}">-->
+								<div class="item-slot-amount" v-if="getItemInSlot(slot, 'trade') && typeof getItemInSlot(slot, 'trade').amount === 'number'" :class="{'text-red': getItemInSlot(slot, 'trade').amount < 1}">
+									<p>
+										{{ getItemInSlot(slot, 'trade').amount }}{{ typeof getItemInSlot(slot, 'trade').maxStock === 'number' ? '/' + getItemInSlot(slot, 'trade').maxStock : '' }}
+									</p>
+								</div>
+								<div v-if="isShopInventory && currentShopMode === 'buy' && getItemInSlot(slot, 'trade') && getItemInSlot(slot, 'trade').price" class="item-price">
+									<p>{{ getItemInSlot(slot, 'trade').price % 1 === 0 ? getItemInSlot(slot, 'trade').price : getItemInSlot(slot, 'trade').price.toFixed(2) }} $</p>
+								</div>
+								<div v-if="isShopInventory && currentShopMode === 'sell' && getItemInSlot(slot, 'trade') && getItemInSlot(slot, 'trade').buyPrice" class="item-sell-price">
+									<p>{{ getItemInSlot(slot, 'trade').buyPrice % 1 === 0 ? getItemInSlot(slot, 'trade').buyPrice : getItemInSlot(slot, 'trade').buyPrice.toFixed(2) }} $</p>
+								</div>
+								<div class="item-slot-durability" v-if="getItemInSlot(slot, 'trade') && 'quality' in getItemInSlot(slot, 'trade').info">
+									<div
+										class="item-slot-durability-fill"
+										v-if="getItemInSlot(slot, 'trade').info && 'quality' in getItemInSlot(slot, 'trade').info"
+										:style="{ width: (getItemInSlot(slot, 'trade').info.quality / 100) * 100 + '%' }"
+										:class="{
+											'high': getItemInSlot(slot, 'trade').info.quality > 75,
+											'medium': getItemInSlot(slot, 'trade').info.quality <= 75 && getItemInSlot(slot, 'trade').info.quality > 25,
+											'low': getItemInSlot(slot, 'trade').info.quality <= 25
+										}"
+									></div>
+									<div class="item-slot-durability-fill" v-else style="width: 0%"></div>
+								</div>
+							</div>
+						</div>
+						<div class="weight-bar">
+							<div class="weight-bar-fill" :style="{ width: Math.min((tradeInventoryWeight / tradeInventoryMaxWeight) * 100, 100) + '%' }" :class="tradeWeightBarClass"></div>
+						</div>
+						<div class="weight-info">
+							<div class="current-weight">
+								<!--<img class="weight-icon" src="assets/rpg_overweight.png" alt="weight" />-->
+								<div class="weight-icon"></div>
+								<p>{{(tradeInventoryWeight / 1000).toFixed(1) }} / {{(tradeInventoryMaxWeight / 1000).toFixed(1)}}</p>
+							</div>
+							<div class="item-weight" v-if="formatWeight(selectedTradeItemInfo)">
+								<p>{{ formatWeight(selectedTradeItemInfo) }} kg / {{ formatWeight(selectedTradeItemInfo, true) }} kg</p>
+							</div>
+						</div>
+						<div class="item-info">
+							<!-- название -->
+							<div class="item-label" v-if="selectedTradeItemInfo && selectedTradeItemInfo.label">
+								{{ selectedTradeItemInfo.label }}
+							</div>
+						
+							<!-- эффекты -->
+							<div class="item-effects" v-if="selectedTradeItemInfo && selectedTradeItemInfo.effects && selectedTradeItemInfo.effects.length">
+								<ul>
+									<li v-for="(effect, i) in selectedTradeItemInfo.effects" :key="i">{{ effect }}</li>
+								</ul>
+							</div>						
+						
+							<!-- описание -->
+							<div class="item-description" v-if="selectedTradeItemInfo && selectedTradeItemInfo.description">
+								{{ selectedTradeItemInfo.description }}
+							</div>
+							<div class="item-sellinfo" v-if="selectedTradeItemInfo && selectedTradeItemInfo.price && currentShopMode === 'buy'">
+								<div class="divider"></div>
+								<div class="item-selling">
+									<div class="item-label">{{ t.price }}</div>
+									<div class="item-label">{{ Number(selectedTradeItemInfo.price).toFixed(2) }} $</div>
+								</div>
+							</div>
+							<div class="item-sellinfo" v-if="selectedTradeItemInfo && selectedTradeItemInfo.buyPrice && currentShopMode === 'sell'">
+								<div class="divider"></div>
+								<div class="item-selling">
+									<div class="item-label">{{ t.value }}</div>
+									<div class="item-label">{{ Number(selectedTradeItemInfo.buyPrice).toFixed(2) }} $</div>
+								</div>
+							</div>
+						</div>
+						
+						<div class="divider"></div>
+						<div class="item-amount-quantity">
+							<div class="item-quality">
+								<div class="item-quality1" v-if="selectedTradeItemInfo && selectedTradeItemInfo.info.quality">
+									{{ t.quality }} {{ (selectedTradeItemInfo.info.quality).toFixed(2) }}%
+								</div>
+							</div>
+							<div class="item-quantity">
+								<div class="item-quantity1" v-if="selectedTradeItemInfo && selectedTradeItemInfo.amount">
+									{{ t.amount_start }} {{ selectedTradeItemInfo.amount }} {{ t.amount_end }}
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
             </div>
             <div class="hotbar-container" v-if="showHotbar">
                 <div class="hotbar">
@@ -421,6 +620,10 @@
             <ul v-if="showContextMenu" class="context-menu" :style="{ top: contextMenuPosition.top, left: contextMenuPosition.left }">
                 <li v-if="contextMenuItem.useable" @click="useItem(contextMenuItem)">
                     <i class="fa-solid fa-star" style="color: #ffffffab; width: 18px;"></i>&nbsp;{{ t.use }}</li>
+				<li v-if="contextMenuItem.name.includes('notepad')" @click="attachNotepad(contextMenuItem)">
+					<i class="fa-solid fa-paperclip" style="color: #ffffffab; width: 18px;" ></i>&nbsp;Прикрепить</li>
+				<li v-if="contextMenuItem.name.includes('notepad')" @click="renameNotepad(contextMenuItem)">
+					<i class="fa-solid fa-pen-to-square" style="color: #ffffffab; width: 18px;" ></i>&nbsp;Переименовать</li>
                 <li @mouseover="showSubmenu = true" @mouseleave="showSubmenu = false">
                     <i class="fa-solid fa-hand" style="color: #ffffffab; width: 18px;" ></i>&nbsp;{{ t.give }}
                     <ul v-if="showSubmenu" class="submenu">

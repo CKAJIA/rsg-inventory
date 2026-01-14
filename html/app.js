@@ -113,7 +113,7 @@ const InventoryContainer = Vue.createApp({
             }
         },
         shouldCenterInventory() {
-            return this.isOtherInventoryEmpty;
+            return this.isOtherInventoryEmpty && this.isTradeInventoryEmpty;
         },
 		
 		
@@ -209,6 +209,26 @@ const InventoryContainer = Vue.createApp({
 			//return CATEGORY_ORDER.filter(cat => found.includes(cat) || cat === "all");
 			return (this.categoryOrder || []).filter(cat => found.includes(cat) || cat === "all");
 		},
+		
+		availableTradeCategories() {
+			const cats = new Set();
+			
+			for (let slot = 1; slot <= this.tradeInventorySlots; slot++) {
+				const item = this.getItemInSlot(slot, "trade");
+				if (!item) continue;
+				
+				// основная категория
+				cats.add(this.getMainCategory(item));
+			
+				// дополнительная категория "sell"
+				//if (item.price) cats.add("sell");
+			}
+			
+			const found = Array.from(cats);
+			
+			//return CATEGORY_ORDER.filter(cat => found.includes(cat) || cat === "all");
+			return (this.categoryOrder || []).filter(cat => found.includes(cat) || cat === "all");
+		},
 
 		filteredPlayerSlots() {
 		// all — как раньше: все слоты
@@ -246,7 +266,7 @@ const InventoryContainer = Vue.createApp({
 		
 		// слоты "другого" инвентаря, где предмет подходит под выбранную категорию
 		filteredOtherSlots() {
-			if (this.currentOtherCategory === "all" && !this.isShopInventory) {
+			if (this.currentOtherCategory === "all" && !this.isShopInventory && !this.isTradeInventory) {
 				return Array.from({ length: this.otherInventorySlots }, (_, i) => i + 1);
 			}
 			
@@ -291,6 +311,46 @@ const InventoryContainer = Vue.createApp({
 		},	
 
 
+		// слоты "другого" инвентаря, где предмет подходит под выбранную категорию
+		filteredTradeSlots() {
+			if (this.currentTradeCategory === "all" && this.isTradeInventory) {
+				return Array.from({ length: this.tradeInventorySlots }, (_, i) => i + 1);
+			}
+			
+			const result = [];
+		
+			for (let slot = 1; slot <= this.tradeInventorySlots; slot++) {
+				const item = this.getItemInSlot(slot, "trade");
+				if (!item) continue;
+		
+				// 🔹 "all" = показываем все слоты (в рамках текущего режима)
+				if (this.currentTradeCategory === "all") {
+					result.push(slot);
+					continue;
+				}
+		
+				// 🔹 обычные категории
+				if (this.getMainCategory(item) === this.currentTradeCategory) {
+					result.push(slot);
+				}
+			}
+		
+			// 🔹 добиваем пустыми слотами
+			const minSlots = 10;
+			const perRow = 5;
+			if (result.length < minSlots) {
+				while (result.length < minSlots) result.push(null);
+			} else {
+				const remainder = result.length % perRow;
+				if (remainder > 0) {
+					const toAdd = perRow - remainder;
+					for (let i = 0; i < toAdd; i++) result.push(null);
+				}
+			}
+		
+			return result;
+		},
+
 
 		
 		
@@ -330,6 +390,12 @@ const InventoryContainer = Vue.createApp({
 				this._gridClearAllSelections();
 			}
 		},
+		isTradeInventoryEmpty(val) {
+			if (!val) {
+				// если появился другой инвентарь, сбрасываем выделения
+				this._gridClearAllSelections();
+			}
+		},
 		
 		
 		availablePlayerCategories(cats) {
@@ -355,6 +421,7 @@ const InventoryContainer = Vue.createApp({
                 additionalCloseKey: 'KeyI',
                 // Single pane
                 isOtherInventoryEmpty: true,
+				isTradeInventoryEmpty: true,//поставить false для редактирования TRADE инвентаря
                 // Error handling
                 errorSlot: null,
                 // Player Inventory
@@ -368,6 +435,7 @@ const InventoryContainer = Vue.createApp({
                 otherInventoryMaxWeight: 1000000,
                 otherInventorySlots: 100,
                 isShopInventory: false,
+				isTradeInventory: false,
                 // Where item is coming from
                 inventory: "",
                 // Context Menu
@@ -518,6 +586,7 @@ const InventoryContainer = Vue.createApp({
 			this.playerId = data.playerId || null;
             this.playerInventory = {};
             this.otherInventory = {};
+			this.tradeInventory = {};
 			
 			
 			if (data.categories) {
@@ -589,10 +658,44 @@ const InventoryContainer = Vue.createApp({
                 this.isOtherInventoryEmpty = false;
             }
 			
+			if (data.trade) {
+                if (data.trade && data.trade.inventory) {
+                    if (Array.isArray(data.trade.inventory)) {
+                        data.trade.inventory.forEach((item) => {
+                            if (item && item.slot) {
+                                this.otherInventory[item.slot] = item;
+                            }
+                        });
+                    } else if (typeof data.trade.inventory === "object") {
+                        for (const key in data.trade.inventory) {
+                            const item = data.trade.inventory[key];
+                            if (item && item.slot) {
+                                this.tradeInventory[item.slot] = item;
+                            }
+                        }
+                    }
+                }
+
+                this.tradeInventoryName = data.trade.name;
+                // If an "trade" label is provided, use it, otherwise fallback to t.drop (or the existing one)
+                this.tradeInventoryLabel = data.trade.label || this.t.drop || this.tradeInventoryLabel;
+                this.tradeInventoryMaxWeight = data.trade.maxweight;
+                this.tradeInventorySlots = data.trade.slots;
+
+                if (this.tradeInventoryName.startsWith("trade-")) {
+                    this.isTradeInventory = true;
+                } else {
+                    this.isTradeInventory = false;
+                }
+
+                this.isTradeInventoryEmpty = false;
+            }
+			
 			// Tab title (if labels are provided)
             if (this.t && this.t.title) {
                 document.title = this.t.title;
             }
+			this.postData('playSound', {	soundSet: "HUD_PLAYER_MENU", soundName: "MENU_ENTER" });
         },
 		/*
 		updateInventory(data) {
@@ -707,6 +810,7 @@ const InventoryContainer = Vue.createApp({
             } catch (error) {
                 console.error("Error closing inventory:", error);
             }
+			this.postData('playSound', { soundSet: "HUD_PLAYER_MENU",	soundName: "MENU_CLOSE"	});
         },
         //clearTransferAmount() {
         //    this.transferAmount = null;
@@ -716,6 +820,8 @@ const InventoryContainer = Vue.createApp({
                 return this.playerInventory[slot] || null;
             } else if (inventoryType === "other") {
                 return this.otherInventory[slot] || null;
+            } else if (inventoryType === "trade") {
+                return this.tradeInventory[slot] || null;
             }
             return null;
         },
@@ -963,6 +1069,22 @@ const InventoryContainer = Vue.createApp({
 					this.handleItemDrop("other", 1);
 				}
             }
+			
+			const targetTradeItemSlotElement = event.target.closest(".trade-inventory .item-slot");
+            if (targetTradeItemSlotElement) {
+                const targetSlot = Number(targetTradeItemSlotElement.dataset.slot);                
+				// 🔹 Обычный перенос (между слотами)
+				if (targetSlot && !(targetSlot === this.currentlyDraggingSlot && this.dragStartInventoryType === "trade")) {
+					this.handleItemDrop("trade", targetSlot);
+                }
+				// Магазин: у слотов нет data-slot из-за сортировки,
+				// поэтому используем фиктивный слот 1 — он всё равно не играет роли.
+				if (!targetSlot && this.isShopInventory) {
+					//this.handleDropOnOtherSlot(1);
+					this.handleItemDrop("trade", 1);
+				}
+            }
+			
 			//перенос если 2 инвентарь еще не показан
             const targetInventoryContainer = event.target.closest(".inventory-container");
             if (targetInventoryContainer && !targetPlayerItemSlotElement && !targetOtherItemSlotElement && this.isOtherInventoryEmpty) {
@@ -1107,7 +1229,7 @@ const InventoryContainer = Vue.createApp({
 			} finally {
 				this.showContextMenu = false;
 			}
-		},		
+		},
 		async handleItemDrop(targetInventoryType, targetSlot) {
 			const DraggingSlot = this.currentlyDraggingSlot;
 			// ✅ Сохраняем событие один раз, пока оно ещё "живое" для выделения слота
@@ -1699,6 +1821,36 @@ const InventoryContainer = Vue.createApp({
 				//clearSelection();
             }
         },
+		
+		async attachNotepad(item) {
+			if (!item || item.name !== 'notepad') return;
+		
+			try {
+				await axios.post("https://rsg-inventory/attachNotepad", {
+					item: item,
+					slot: item.slot
+				});
+			} catch (error) {
+				console.error("Error attach notepad:", error);
+			}
+			this.closeInventory();
+			this.showContextMenu = false;
+		},
+		async renameNotepad(item) {
+			if (!item || item.name !== 'notepad') return;
+		
+			try {
+				await axios.post("https://rsg-inventory/renameNotepad", {
+					item: item,
+					slot: item.slot
+				});
+			} catch (error) {
+				console.error("Error rename notepad:", error);
+			}
+		
+			this.showContextMenu = false;
+		},
+		
         openWeaponAttachments() {
 			this.showContextMenu = false;	
 			//clearSelection();
@@ -1800,15 +1952,20 @@ const InventoryContainer = Vue.createApp({
 					for (const [key, value] of Object.entries(obj)) {
 						if (hiddenFields.includes(key)) continue;
 			
-						const padding = "&nbsp;".repeat(indent * 4);
+						//const padding = "&nbsp;".repeat(indent * 4);
 	
 						if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-							html += `<div class="tooltip-info"><span class="tooltip-info-key">${padding}${this.formatKey(key)}</span></div>`;
+							html += `<div class="tooltip-info"><span class="tooltip-info-key">${this.formatKey(key)}</span></div>`;
 							html += renderInfo(value, indent + 1);
 						} else {
-							html += `<div class="tooltip-info"><span class="tooltip-info-key">${padding}${this.formatKey(key)}</span> ${value}</div>`;
+							let displayValue = value;
+							if (typeof value === "number") { //если это номер- то для качества округляем и приписываем %
+								displayValue = `${value.toFixed(2)} %`;
+							}
+							html += `<div class="tooltip-info"><span class="tooltip-info-key">${this.formatKey(key)}</span>${displayValue}</div>`;
 						}
 					}
+
 					return html;
 				};
 				
@@ -1935,7 +2092,24 @@ const InventoryContainer = Vue.createApp({
 		},
 		
 		
-		
+		async postData(eventName, data = {}) {
+			try {
+				const response = await axios.post(`https://rsg-inventory/${eventName}`, data);
+				
+				// Axios автоматически парсит JSON и кладет его в .data
+				// Мы возвращаем структуру, к которой вы привыкли
+				return {
+					ok: true,
+					data: response.data
+				};
+			} catch (error) {
+				console.error(`[NUI] Erro ao postar para ${eventName}:`, error);
+				return { 
+					ok: false, 
+					message: error.message 
+				};
+			}
+		},
 		
 		
         postInventoryData(fromInventory, toInventory, fromSlot, toSlot, fromAmount, toAmount) {
@@ -2125,6 +2299,8 @@ const InventoryContainer = Vue.createApp({
 				else if (inventory == "other") {
 					this.selectedOtherItemInfo = itemInSlot;
 				}
+				// Звук переключения (BUMPERLEFT/RIGHT)
+				this.postData('playSound', { soundSet: 'HUD_PLAYER_MENU', soundName: 'SELECT' });
 			}
 		},		
 		// Универсальная функция форматирования веса
@@ -2168,6 +2344,7 @@ const InventoryContainer = Vue.createApp({
 				this.currentPlayerCategory = cat;
 				// 🔹 Сбрасываем выделение и инфо при смене категории
 				this.clearInventorySelection(this.playerInventory);
+				this.postData('playSound', { soundSet: 'HUD_PLAYER_MENU', soundName: 'BUMPER_LEFT' });
 			}
 		},
 		setOtherCategory(cat) {
@@ -2175,6 +2352,7 @@ const InventoryContainer = Vue.createApp({
 				this.currentOtherCategory = cat;
 				// 🔹 Сбрасываем выделение и инфо при смене категории
 				this.clearInventorySelection(this.otherInventory);
+				this.postData('playSound', { soundSet: 'HUD_PLAYER_MENU', soundName: 'BUMPER_LEFT' });
 			}
 		},
 		
@@ -2215,6 +2393,7 @@ const InventoryContainer = Vue.createApp({
 			this.currentPlayerCategory = cats[next];
 			// 🔹 Сбрасываем выделение и инфо при смене категории
 			this.clearInventorySelection(this.playerInventory);
+			this.postData('playSound', { soundSet: 'HUD_PLAYER_MENU', soundName: 'BUMPER_LEFT' });
 		},
 		cycleOtherCategory(direction) {
 			const cats = this.availableOtherCategories;
@@ -2224,6 +2403,7 @@ const InventoryContainer = Vue.createApp({
 			this.currentOtherCategory = cats[next];
 			// 🔹 Сбрасываем выделение и инфо при смене категории
 			this.clearInventorySelection(this.otherInventory);
+			this.postData('playSound', { soundSet: 'HUD_PLAYER_MENU', soundName: 'BUMPER_LEFT' });
 		},
 		// нажатие на кнопки клавиатуры для переключения категорий
 		_onKeyCat(e) {
@@ -2247,6 +2427,7 @@ const InventoryContainer = Vue.createApp({
 			return new Promise((resolve) => {				
 				this.tempTransferAmount = null;
 				this.showAmountPrompt = true;
+				this.postData('playSound', { soundSet: "Study_Sounds", soundName: "show_info" });
 				//устанавливаем фокус на строке ввода после открытия
 				this.$nextTick(() => {
 					this.$refs.amountInput.focus();
@@ -2262,6 +2443,7 @@ const InventoryContainer = Vue.createApp({
 			if (this.tempTransferAmount <= 0) return;
 		
 			this.showAmountPrompt = false;
+			this.postData('playSound', { soundSet: "Study_Sounds", soundName: "hide_info" });
 		
 			if (this.amountPromiseResolve) {
 				this.amountPromiseResolve(this.tempTransferAmount);
@@ -2272,6 +2454,7 @@ const InventoryContainer = Vue.createApp({
 		// 🔴 Отмена
 		cancelAmount() {
 			this.showAmountPrompt = false;
+			this.postData('playSound', { soundSet: "Study_Sounds", soundName: "hide_info" });
 			
 			if (this.amountPromiseResolve) {
 				this.amountPromiseResolve(null);

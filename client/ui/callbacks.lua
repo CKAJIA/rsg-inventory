@@ -202,6 +202,19 @@ RegisterNUICallback('GiveItemAmount', function(_, cb)
     end
 end)
 
+-- =====================================================
+-- NUI CALLBACK: Вопроизведение звуков
+-- =====================================================
+RegisterNUICallback('playSound', function(data, cb)
+    local soundSet = data.soundSet or "HUD_SHOP_SOUNDSET"
+    local soundName = data.soundName or "INFO"
+    -- Вызов натива для проигрывания звука
+    -- 0x67C540AA08E4A6F5 (PlaySoundFrontend)
+    Citizen.InvokeNative(0x67C540AA08E4A6F5, soundName, soundSet, true, 0)
+    
+    cb('ok')
+end)
+
 --[[ RegisterNUICallback('GetWeaponData', function(cData, cb)
     local data = {
         WeaponData = RSGCore.Shared.Items[cData.weapon],

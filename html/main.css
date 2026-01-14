@@ -32,6 +32,7 @@ div {
     height: 100vh;
     width: 100vw;
     background: transparent;
+	-webkit-user-select: none;
 }
 
 .inventory-container {
@@ -62,6 +63,7 @@ div {
     background: #000000eb;*/
 }
 
+.trade-inventory-header,
 .player-inventory-header,
 .other-inventory-header {
     box-sizing: border-box;
@@ -158,6 +160,7 @@ div {
 	max-height: 3.2vw;*/
 	height: 4.0vmin;
 	margin: 0 3.5vmin 0 3.0vmin;
+	-webkit-user-select: none;
 }
 
 .inventory-label {
@@ -176,6 +179,7 @@ div {
     left: 50%;
     top: 0.4vmin;
     transform: translateX(-50%);
+	-webkit-user-select: none;
 }
 
 .inventory-icon {
@@ -268,7 +272,28 @@ img.weight-icon {
 }
 
 
+.target-player-info {
+	display: flex;
+    height: 7.6vmin;
+	align-items: center;
+	justify-content: center;
+}
 
+.target-player-name {
+    /* margin-right: 10px; */
+    letter-spacing: 0.07vmin;
+    font-family: "rdrlino";
+    font-weight: 300;
+    color: #ffffffab;
+    /* gap: 1.1rem; */
+    font-size: 2.0vmin;
+	padding-top: 2.5vmin;
+}
+
+.target-trade-item-grid,
+.player-trade-item-grid {
+	height: 17.5vmin !important;
+}
 
 
 .item-grid {
@@ -521,7 +546,7 @@ img.weight-icon {
 	width: 44.8vmin;
     background-color: #2d2d2d;
 	/*margin-top: -4px;*/
-	margin: 0.7vmin auto 0 auto;
+	margin: 0.6vmin auto 0 auto;
 }
 
 .weight-bar-fill {
@@ -915,6 +940,7 @@ ul.submenu.split {
     font-size: 2.0vmin;
 	padding: 5px 0;
 	border-bottom: 1px solid #ffffff40;
+	letter-spacing: 0.07vmin;
 }
 
 .custom-tooltip .tooltip-divider {
@@ -951,6 +977,11 @@ ul.submenu.split {
 .custom-tooltip .tooltip-info-key {
     /*font-weight: bold;*/
 	color:gold;
+}
+
+.tooltip-info-key {
+	color:gold;
+	padding: 0 5px 0 0;
 }
 
 .v-popper__wrapper .v-popper__inner {
@@ -1200,7 +1231,8 @@ img.id-icon {
 
 .divider {
     width: 45vmin;
-    height: 4px;
+    /*height: 4px;*/
+	height: 0.45vmin;
     background-image: url(./assets/scroller_top.png);
     background-size: 100% 100%;
     background-repeat: no-repeat;
@@ -1209,6 +1241,19 @@ img.id-icon {
 	margin: 0 auto 0.5vmin auto;
 }
 
+.divider-bottom {
+    width: 45vmin;
+    /*height: 4px;*/
+	height: 0.45vmin;
+    background-image: url(./assets/scroller_top.png);
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+    z-index: 2;
+	margin: 0.5vmin auto 0px;
+}
+
+.trade-controls-section,
 .other-controls-section,
 .player-controls-section {
     height: 7.5vmin;
@@ -1219,6 +1264,7 @@ img.id-icon {
     padding: 0.5vmin;
 }
 
+.trade-top-bar,
 .other-top-bar,
 .player-top-bar {
     display: flex;
@@ -1227,6 +1273,7 @@ img.id-icon {
     gap: 1.0vmin;
 }
 
+button.trade-side-button,
 button.other-side-button,
 button.player-side-button {
     background-color: #e6e6e6;
@@ -1239,8 +1286,10 @@ button.player-side-button {
     color: #000000;
     font-size: 1.8vmin;
     border-radius: 1px;
+	-webkit-user-select: none;
 }
 
+.trade-center-text,
 .other-center-text,
 .player-center-text {
     text-align: center;
@@ -1250,8 +1299,10 @@ button.player-side-button {
     color: #ffffffd1;
     font-size: 2vmin;
 	letter-spacing: 0.07vmin;
+	-webkit-user-select: none;
 }
 
+.trade-cats,
 .other-cats,
 .player-cats,
 .other-icon-bar,
@@ -1314,6 +1365,7 @@ button.player-side-button {
     font-weight: 300;
     color: #ffffffd6;
     font-size: 2.0vmin;
+	letter-spacing: 0.07vmin;
 }
 
 .item-serie,
@@ -1324,6 +1376,7 @@ button.player-side-button {
 	margin-top: 0.7vmin;
 }
 
+.trade-inventory-bg,
 .other-inventory-bg {
     position: absolute;
     width: 55vmin;

@@ -210,6 +210,49 @@ RegisterNetEvent('rsg-inventory:client:openInventory', function(items, other)
     })
 end)
 
+
+
+
+
+
+local function openInventoryNUI(items, payload)
+    local token  = exports['rsg-core']:GenerateCSRFToken()
+    local Player = RSGCore.Functions.GetPlayerData()
+    local config = require 'shared.config'
+    local labels = buildLabels()
+
+    SetNuiFocus(true, true)
+
+    local data = {
+        action     = 'open',
+        categories = config.categories,
+        inventory  = items,
+        slots      = Player.slots,
+        maxweight  = Player.weight,
+        playerId   = Player.source or Player.id or Player.citizenid,
+        token      = token,
+        closeKey   = config.Keybinds.Close,
+        cash       = Player.money.cash,
+        labels     = labels,
+    }
+
+    -- 👇 добавляем ТОЛЬКО нужный контекст
+    for k, v in pairs(payload or {}) do
+        data[k] = v
+    end
+
+    SendNUIMessage(data)
+end
+--[[
+RegisterNetEvent('rsg-inventory:client:openInventory', function(items, other)
+    openInventoryNUI(items, { other = other })
+end)
+
+RegisterNetEvent('rsg-inventory:client:openTradeInventory', function(items, trade)
+    openInventoryNUI(items, { trade = trade })
+end)
+--]]
+
 ------------------------------------------------
 -- on money change
 ------------------------------------------------
