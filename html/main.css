@@ -271,23 +271,26 @@ img.weight-icon {
     background-color: #a92323;
 }
 
+.my-player-info {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
 
 .target-player-info {
 	display: flex;
-    height: 7.6vmin;
+    height: 5.1vmin;
 	align-items: center;
 	justify-content: center;
 }
 
 .target-player-name {
-    /* margin-right: 10px; */
     letter-spacing: 0.07vmin;
     font-family: "rdrlino";
     font-weight: 300;
     color: #ffffffab;
-    /* gap: 1.1rem; */
     font-size: 2.0vmin;
-	padding-top: 2.5vmin;
+	padding: 0.3vmin 0;
 }
 
 .target-trade-item-grid,
@@ -1229,6 +1232,20 @@ img.id-icon {
     font-size: 2vmin;
 }
 
+.tradeitem-info {
+	position: relative;
+    height: 14.7vmin;
+	max-height: 14.7vmin;
+	color: white;
+    align-items: center;
+    align-content: center;
+    text-align: center;
+    padding: 2vmin 3vmin 1vmin 3vmin;
+    font-family: hapnaslabserif;
+    font-weight: 300;
+    font-size: 2vmin;
+}
+
 .divider {
     width: 45vmin;
     /*height: 4px;*/
@@ -1253,15 +1270,30 @@ img.id-icon {
 	margin: 0.5vmin auto 0px;
 }
 
-.trade-controls-section,
 .other-controls-section,
 .player-controls-section {
     height: 7.5vmin;
+	max-height: 7.5vmin;
 	display: flex;
     flex-direction: column;
     align-items: center;
     gap: 1.2vmin;
     padding: 0.5vmin;
+}
+
+.my-selectors {
+	gap: 1.0vmin;
+}
+
+.trade-controls-section {
+    height: 5.0vmin;
+	max-height: 5.0vmin;
+	display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.2vmin;
+    padding: 0vmin;
+	margin-top: -0.1vmin;
 }
 
 .trade-top-bar,
@@ -1409,6 +1441,25 @@ button.player-side-button {
     bottom: 0vmin;
 }
 
+.item-tradeinfo {
+    /*position: absolute;
+    bottom: 0vmin;*/
+}
+
+.item-trading {
+    align-items: center;
+    height: 2.4vmin;
+	margin-bottom: 0.9vmin;
+}
+
+.item-tradelabel {
+    font-family: "hapnaslabserif";
+    font-weight: 300;
+    color: #ffffffd6;
+    font-size: 2vmin;
+	/*letter-spacing: 0.07vmin;*/
+}
+
 .item-amount-quantity {
     display: flex;
     justify-content: space-between;
@@ -1482,6 +1533,14 @@ img.money-icon {
     font-size: 2.0vmin;
 }
 
+.trade-ok {
+	padding: 1vmin 0.2vmin;
+}
+
+.btn-tradecancel {
+	padding: 1vmin 0.2vmin 1vmin 2vmin;
+}
+
 .btn-cancel {
 	padding-left: 2vmin;
 }
@@ -1495,6 +1554,12 @@ img.money-icon {
 	height: 4vmin;
 	overflow: hidden;
 	cursor: pointer;
+}
+
+.image-button-ok:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+	background-color: #a1a1a1;
 }
 
 .image-button-ok:hover {
@@ -1517,6 +1582,10 @@ img.money-icon {
 
 .image-button-ok:active::after {
   opacity: 1;
+}
+
+.image-button-ok:disabled::after {
+    content: none;
 }
 
 .image-button-cancel {
@@ -1574,5 +1643,14 @@ input#amountInput:focus {
   border: 2px solid #4b4b4b; /* зелёная рамка */
 }
 
-
+.trade-accepted-badge {
+    background-color: #2a6433;
+    color: #ffffffd6;
+    font-size: 2vmin;
+    padding: 0vmin 0.6vmin 0.3vmin 0.6vmin;
+    border-radius: 0.3vmin;
+    font-family: "hapnaslabserif";
+    font-weight: 300;
+	margin: 0.1vmin 0 0vmin 0.5vmin;
+}
 

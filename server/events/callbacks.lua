@@ -1,4 +1,15 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
+
+lib.callback.register('rsg-inventory:server:getPlayerName', function(source, targetId)
+    local Player = RSGCore.Functions.GetPlayer(targetId)
+    if not Player then return GetPlayerName(targetId) end
+    local char = Player.PlayerData.charinfo
+    if char and char.firstname then
+        return char.firstname .. ' ' .. char.lastname
+    end
+    return GetPlayerName(targetId)
+end)
+
 -- Register a server callback for giving an item from one player to another
 lib.callback.register('rsg-inventory:server:giveItem', function(source, target, item, amount, slot, info)
     -- Get the player object for the source (the giver)
@@ -26,6 +37,15 @@ lib.callback.register('rsg-inventory:server:giveItem', function(source, target, 
         return false
     end
 
+    -- Fetch the real item from the source's inventory by slot (don't trust client-sent info/metadata)
+    local invItem = Inventory.GetItemBySlot(source, slot)
+    if not invItem or invItem.name:lower() ~= item:lower() or invItem.amount <= 0 or tonumber(amount) > invItem.amount then
+        return false
+    end
+
+    -- Use server-side item info (prevents serial/quality forgery)
+    local serverInfo = invItem.info or {}
+
     -- Initialize a flag to track if the item is a weapon
     local isMove = false
     if itemInfo.type == 'weapon' then
@@ -33,25 +53,14 @@ lib.callback.register('rsg-inventory:server:giveItem', function(source, target, 
         Inventory.CheckWeapon(source, item) -- Check or remove the weapon from the source
     end
 
-    -- Check if the source has the item
-    if not Inventory.HasItem(source, item) then
-        return false
-    end
-
-    -- Get the inventory entry for the item
-    local invItem = Inventory.GetItemByName(source, item)
-    -- Verify the item exists and the amount to give is valid
-    if not invItem or invItem.amount <= 0 or tonumber(amount) > invItem.amount then
-        return false
-    end
-
-    -- Try to add the item to the target player's inventory
-    if not Inventory.AddItem(target, item, amount, false, info, ('Item given from ID #%s'):format(source)) then
-        return false
-    end
-
-    -- Remove the item from the source player's inventory
+    -- Remove from source first, then add to target (prevents duplication)
     if not Inventory.RemoveItem(source, item, amount, slot, ('Item given to ID #%s'):format(target), isMove) then
+        return false
+    end
+
+    if not Inventory.AddItem(target, item, amount, false, serverInfo, ('Item given from ID #%s'):format(source)) then
+        -- Rollback: give item back to source if add to target fails
+        Inventory.AddItem(source, item, amount, false, serverInfo, 'rollback give item')
         return false
     end
 

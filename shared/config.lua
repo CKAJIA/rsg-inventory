@@ -17,6 +17,17 @@ return {
         maxweight = 1000000, -- Max weight for dropped items
         slots = 50           -- Number of slots for dropped items
     },
+	
+	MaxTradeSlots = 10, --количество слотов для трейда. Минимум 10 и потом по +5
+	TradeBlockedItems = { --предметы которые запрещено передавать
+		dollar = true,
+		cent = true,
+		blood_dollar = true,
+		blood_cent = true,
+		money_clip = true,
+		blood_money_clip = true,
+		canteen100 = true,
+	},
 
     -- Key bindings for inventory actions
     Keybinds = {
@@ -44,6 +55,7 @@ return {
     ShopsRestockCycle = "0 * * * *", -- every hour (https://crontab.guru/)
 
     -- List of objects that act as vending machines
+	--Список объектов при наведении на который можно будет использовать магазин.
     VendingObjects = {
         `s_inv_whiskey02x`,
         `p_whiskeycrate01x`,

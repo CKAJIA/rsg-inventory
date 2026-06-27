@@ -104,6 +104,16 @@
 	"cancel": "Отмена",
 	"equipped": "Надето",
 	
+    "trade": "Обмен",
+    "your_offer": "Ваши предметы",
+    "their_offer": "Его предметы",
+    "accept": "Принять",
+    "waiting": "Ожидание другого игрока...",
+    "cancel": "Отмена",
+    "accepted": "Принято",
+    "no_items_offered": "Нет предметов для обмена",
+	"withh": "c",
+	
 	"categories": {
 		"all": "Все",
 		"clothes": "Одежда",

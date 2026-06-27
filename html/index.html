@@ -343,106 +343,58 @@
 				
 				
 				
-				<div class="trade-inventory-bg" v-if="!isTradeInventoryEmpty && isOtherInventoryEmpty">
+				<div class="trade-inventory-bg" v-if="isTradeActive">
 					<div class="trade-inventory-header">
 						<div class="labels-container">
 							<div class="inventory-label">
-								<p>{{ tradeInventoryLabel }}</p>
+								<p>{{ t.trade }}{{ tradePartnerName ? ' - ' + tradePartnerName : '' }}</p>
 							</div>
 						</div>
 					</div>
 					<div class="divider"></div>
-					<div class="trade-controls-section">
-						<div class="trade-top-bar">
-							<button class="trade-side-button" @click="cycleTradeCategory(-1)">A</button>
-							<div class="trade-center-text">{{ currentTradeCategoryTitle }}</div>
-							<button class="trade-side-button" @click="cycleTradeCategory(1)">D</button>
+					<div class="my-selectors other-controls-section">
+						<div class="item-tradeinfo">
+							<div class="item-trading">
+								<div class="item-tradelabel" v-if="myTradeAccepted">{{ t.waiting }}</div>
+								<div class="item-tradelabel" v-if="Object.keys(myTradeOffers).length === 0 && Object.keys(theirTradeOffers).length === 0">{{ t.no_items_offered }}</div>
+							</div>
 						</div>
-						<div class="trade-cats">
-							<button
-								v-for="cat in availableTradeCategories"
-								:key="cat"
-								class="catbutton-icon"
-								:id="'icon-' + cat"
-								@click="setTradeCategory(cat)"
-								:class="{ active: currentTradeCategory === cat }"
-								:title="categoryTitle(cat)">
-							</button>
+						<div class="my-player-info">
+							<div class="target-player-name">{{ t.your_offer }}</div>
+							<span v-if="myTradeAccepted" class="trade-accepted-badge">{{ t.accepted }}</span>
 						</div>
 					</div>
 					<div class="divider"></div>
-					<div class="trade-inventory" v-if="!isTradeInventoryEmpty && isOtherInventoryEmpty">
-						<div class="item-grid player-trade-item-grid" data-inventory="trade">
-							<div v-for="slot in filteredTradeSlots" :key="slot" class="item-slot" v-tooltip.right-end="{content: generateTooltipContent(getItemInSlot(slot, 'trade')), html: true}" :data-slot="slot" @mousedown="event => handleMouseDown(event, slot, 'trade')" @dragover.prevent>
-								<div class="item-slot-img" v-if="getItemInSlot(slot, 'trade')">
-									<img :src="'images/' + getItemInSlot(slot, 'trade').image" alt="" />
+					<div class="trade-inventory" v-if="isTradeActive">
+						<div class="item-grid player-trade-item-grid" data-inventory="trade-my">
+							<div v-for="slot in myTradeRenderSlots" :key="slot" class="item-slot" :style="{ opacity: myTradeAccepted ? 0.6 : 1 }" v-tooltip.right-end="{content: generateTooltipContent(getMyTradeItem(slot, 'trade')), html: true}" :data-slot="slot" @mousedown="event => handleMouseDown(event, slot, 'trade-my')" @dragover.prevent>
+								<div class="item-slot-img" v-if="getMyTradeItem(slot)">
+									<img :src="'images/' + getMyTradeItem(slot).image" alt=""/>
 								</div>
-								<div v-if="getItemInSlot(slot, 'trade') && getItemInSlot(slot, 'trade').squality" class="item-quality-stars">
-									<img :src="'./assets/quality_0' + getItemInSlot(slot, 'trade').squality + '.png'" alt="" />
+								<div v-if="getMyTradeItem(slot) && getMyTradeItem(slot).squality" class="item-quality-stars">
+									<img :src="'./assets/quality_0' + getMyTradeItem(slot).squality + '.png'" alt=""/>
 								</div>
-								<!--<div class="item-slot-amount" v-if="!isShopInventory && getItemInSlot(slot, 'trade') && typeof getItemInSlot(slot, 'trade').amount === 'number'" :class="{'text-red': getItemInSlot(slot, 'trade').amount < 1}">-->
-								<div class="item-slot-amount" v-if="getItemInSlot(slot, 'trade') && typeof getItemInSlot(slot, 'trade').amount === 'number'" :class="{'text-red': getItemInSlot(slot, 'trade').amount < 1}">
+								<!--<div class="item-slot-amount" v-if="!isShopInventory && getMyTradeItem(slot) && typeof getMyTradeItem(slot, 'trade').amount === 'number'" :class="{'text-red': getMyTradeItem(slot).amount < 1}">-->
+								<div class="item-slot-amount" v-if="getMyTradeItem(slot) && typeof getMyTradeItem(slot).amount === 'number'" :class="{'text-red': getMyTradeItem(slot).amount < 1}">
 									<p>
-										{{ getItemInSlot(slot, 'trade').amount }}{{ typeof getItemInSlot(slot, 'trade').maxStock === 'number' ? '/' + getItemInSlot(slot, 'trade').maxStock : '' }}
+										{{ getMyTradeItem(slot).amount }}{{ typeof getMyTradeItem(slot).maxStock === 'number' ? '/' + getMyTradeItem(slot).maxStock : '' }}
 									</p>
 								</div>
-								<div v-if="isShopInventory && currentShopMode === 'buy' && getItemInSlot(slot, 'trade') && getItemInSlot(slot, 'trade').price" class="item-price">
-									<p>{{ getItemInSlot(slot, 'trade').price % 1 === 0 ? getItemInSlot(slot, 'trade').price : getItemInSlot(slot, 'trade').price.toFixed(2) }} $</p>
+								<div v-if="isShopInventory && currentShopMode === 'buy' && getMyTradeItem(slot) && getMyTradeItem(slot).price" class="item-price">
+									<p>{{ getMyTradeItem(slot).price % 1 === 0 ? getMyTradeItem(slot).price : getMyTradeItem(slot).price.toFixed(2) }} $</p>
 								</div>
-								<div v-if="isShopInventory && currentShopMode === 'sell' && getItemInSlot(slot, 'trade') && getItemInSlot(slot, 'trade').buyPrice" class="item-sell-price">
-									<p>{{ getItemInSlot(slot, 'trade').buyPrice % 1 === 0 ? getItemInSlot(slot, 'trade').buyPrice : getItemInSlot(slot, 'trade').buyPrice.toFixed(2) }} $</p>
+								<div v-if="isShopInventory && currentShopMode === 'sell' && getMyTradeItem(slot) && getMyTradeItem(slot).buyPrice" class="item-sell-price">
+									<p>{{ getMyTradeItem(slot).buyPrice % 1 === 0 ? getMyTradeItem(slot).buyPrice : getMyTradeItem(slot).buyPrice.toFixed(2) }} $</p>
 								</div>
-								<div class="item-slot-durability" v-if="getItemInSlot(slot, 'trade') && 'quality' in getItemInSlot(slot, 'trade').info">
+								<div class="item-slot-durability" v-if="getMyTradeItem(slot) && 'quality' in getMyTradeItem(slot).info">
 									<div
 										class="item-slot-durability-fill"
-										v-if="getItemInSlot(slot, 'trade').info && 'quality' in getItemInSlot(slot, 'trade').info"
-										:style="{ width: (getItemInSlot(slot, 'trade').info.quality / 100) * 100 + '%' }"
+										v-if="getMyTradeItem(slot).info && 'quality' in getMyTradeItem(slot).info"
+										:style="{ width: (getMyTradeItem(slot).info.quality / 100) * 100 + '%' }"
 										:class="{
-											'high': getItemInSlot(slot, 'trade').info.quality > 75,
-											'medium': getItemInSlot(slot, 'trade').info.quality <= 75 && getItemInSlot(slot, 'trade').info.quality > 25,
-											'low': getItemInSlot(slot, 'trade').info.quality <= 25
-										}"
-									></div>
-									<div class="item-slot-durability-fill" v-else style="width: 0%"></div>
-								</div>
-							</div>
-						</div>
-						<div class="divider-bottom"></div>
-						<div class="target-player-info">
-							<div class="target-player-name">
-								Target Player Name
-							</div>
-						</div>
-						<div class="divider"></div>
-						<div class="item-grid target-trade-item-grid" data-inventory="trade">
-							<div v-for="slot in filteredTradeSlots" :key="slot" class="item-slot" v-tooltip.right-end="{content: generateTooltipContent(getItemInSlot(slot, 'trade')), html: true}" :data-slot="slot" @mousedown="event => handleMouseDown(event, slot, 'trade')" @dragover.prevent>
-								<div class="item-slot-img" v-if="getItemInSlot(slot, 'trade')">
-									<img :src="'images/' + getItemInSlot(slot, 'trade').image" alt="" />
-								</div>
-								<div v-if="getItemInSlot(slot, 'trade') && getItemInSlot(slot, 'trade').squality" class="item-quality-stars">
-									<img :src="'./assets/quality_0' + getItemInSlot(slot, 'trade').squality + '.png'" alt="" />
-								</div>
-								<!--<div class="item-slot-amount" v-if="!isShopInventory && getItemInSlot(slot, 'trade') && typeof getItemInSlot(slot, 'trade').amount === 'number'" :class="{'text-red': getItemInSlot(slot, 'trade').amount < 1}">-->
-								<div class="item-slot-amount" v-if="getItemInSlot(slot, 'trade') && typeof getItemInSlot(slot, 'trade').amount === 'number'" :class="{'text-red': getItemInSlot(slot, 'trade').amount < 1}">
-									<p>
-										{{ getItemInSlot(slot, 'trade').amount }}{{ typeof getItemInSlot(slot, 'trade').maxStock === 'number' ? '/' + getItemInSlot(slot, 'trade').maxStock : '' }}
-									</p>
-								</div>
-								<div v-if="isShopInventory && currentShopMode === 'buy' && getItemInSlot(slot, 'trade') && getItemInSlot(slot, 'trade').price" class="item-price">
-									<p>{{ getItemInSlot(slot, 'trade').price % 1 === 0 ? getItemInSlot(slot, 'trade').price : getItemInSlot(slot, 'trade').price.toFixed(2) }} $</p>
-								</div>
-								<div v-if="isShopInventory && currentShopMode === 'sell' && getItemInSlot(slot, 'trade') && getItemInSlot(slot, 'trade').buyPrice" class="item-sell-price">
-									<p>{{ getItemInSlot(slot, 'trade').buyPrice % 1 === 0 ? getItemInSlot(slot, 'trade').buyPrice : getItemInSlot(slot, 'trade').buyPrice.toFixed(2) }} $</p>
-								</div>
-								<div class="item-slot-durability" v-if="getItemInSlot(slot, 'trade') && 'quality' in getItemInSlot(slot, 'trade').info">
-									<div
-										class="item-slot-durability-fill"
-										v-if="getItemInSlot(slot, 'trade').info && 'quality' in getItemInSlot(slot, 'trade').info"
-										:style="{ width: (getItemInSlot(slot, 'trade').info.quality / 100) * 100 + '%' }"
-										:class="{
-											'high': getItemInSlot(slot, 'trade').info.quality > 75,
-											'medium': getItemInSlot(slot, 'trade').info.quality <= 75 && getItemInSlot(slot, 'trade').info.quality > 25,
-											'low': getItemInSlot(slot, 'trade').info.quality <= 25
+											'high': getMyTradeItem(slot).info.quality > 75,
+											'medium': getMyTradeItem(slot).info.quality <= 75 && getMyTradeItem(slot).info.quality > 25,
+											'low': getMyTradeItem(slot).info.quality <= 25
 										}"
 									></div>
 									<div class="item-slot-durability-fill" v-else style="width: 0%"></div>
@@ -450,19 +402,62 @@
 							</div>
 						</div>
 						<div class="weight-bar">
-							<div class="weight-bar-fill" :style="{ width: Math.min((tradeInventoryWeight / tradeInventoryMaxWeight) * 100, 100) + '%' }" :class="tradeWeightBarClass"></div>
+							<div class="weight-bar-fill" :style="{ width: Math.min((tradePlayerWeight / maxWeight) * 100, 100) + '%' }" :class="tradeWeightBarClass"></div>
 						</div>
 						<div class="weight-info">
 							<div class="current-weight">
 								<!--<img class="weight-icon" src="assets/rpg_overweight.png" alt="weight" />-->
 								<div class="weight-icon"></div>
-								<p>{{(tradeInventoryWeight / 1000).toFixed(1) }} / {{(tradeInventoryMaxWeight / 1000).toFixed(1)}}</p>
+								<p>{{(tradePlayerWeight / 1000).toFixed(1) }} / {{(maxWeight / 1000).toFixed(1)}}</p>
 							</div>
 							<div class="item-weight" v-if="formatWeight(selectedTradeItemInfo)">
 								<p>{{ formatWeight(selectedTradeItemInfo) }} kg / {{ formatWeight(selectedTradeItemInfo, true) }} kg</p>
 							</div>
+						</div>						
+						<div class="target-player-info">
+							<div class="target-player-name">
+								{{ tradePartnerName }}
+							</div>
+							<span v-if="theirTradeAccepted" class="trade-accepted-badge">{{ t.accepted }}</span>
 						</div>
-						<div class="item-info">
+						<div class="divider"></div>
+						<div class="item-grid target-trade-item-grid" data-inventory="trade-their">
+							<div v-for="slot in theirTradeRenderSlots" :key="slot" class="item-slot" :style="{ opacity: theirTradeAccepted ? 0.6 : 1 }" v-tooltip.right-end="{content: generateTooltipContent(getTheirTradeItem(slot)), html: true}" :data-slot="slot" @mousedown="event => handleMouseDown(event, slot, 'trade-their')" @dragover.prevent>
+								<div class="item-slot-img" v-if="getTheirTradeItem(slot)">
+									<img :src="'images/' + getTheirTradeItem(slot).image" alt="" />
+								</div>
+								<div v-if="getTheirTradeItem(slot) && getTheirTradeItem(slot).squality" class="item-quality-stars">
+									<img :src="'./assets/quality_0' + getTheirTradeItem(slot).squality + '.png'" alt="" />
+								</div>
+								<!--<div class="item-slot-amount" v-if="!isShopInventory && getTheirTradeItem(slot) && typeof getTheirTradeItem(slot).amount === 'number'" :class="{'text-red': getTheirTradeItem(slot).amount < 1}">-->
+								<div class="item-slot-amount" v-if="getTheirTradeItem(slot) && typeof getTheirTradeItem(slot).amount === 'number'" :class="{'text-red': getTheirTradeItem(slot).amount < 1}">
+									<p>
+										{{ getTheirTradeItem(slot).amount }}{{ typeof getTheirTradeItem(slot).maxStock === 'number' ? '/' + getTheirTradeItem(slot).maxStock : '' }}
+									</p>
+								</div>
+								<div v-if="isShopInventory && currentShopMode === 'buy' && getTheirTradeItem(slot) && getTheirTradeItem(slot).price" class="item-price">
+									<p>{{ getTheirTradeItem(slot).price % 1 === 0 ? getTheirTradeItem(slot).price : getTheirTradeItem(slot).price.toFixed(2) }} $</p>
+								</div>
+								<div v-if="isShopInventory && currentShopMode === 'sell' && getTheirTradeItem(slot) && getTheirTradeItem(slot).buyPrice" class="item-sell-price">
+									<p>{{ getTheirTradeItem(slot).buyPrice % 1 === 0 ? getTheirTradeItem(slot).buyPrice : getTheirTradeItem(slot).buyPrice.toFixed(2) }} $</p>
+								</div>
+								<div class="item-slot-durability" v-if="getTheirTradeItem(slot) && 'quality' in getTheirTradeItem(slot).info">
+									<div
+										class="item-slot-durability-fill"
+										v-if="getTheirTradeItem(slot).info && 'quality' in getTheirTradeItem(slot).info"
+										:style="{ width: (getTheirTradeItem(slot).info.quality / 100) * 100 + '%' }"
+										:class="{
+											'high': getTheirTradeItem(slot).info.quality > 75,
+											'medium': getTheirTradeItem(slot).info.quality <= 75 && getTheirTradeItem(slot).info.quality > 25,
+											'low': getTheirTradeItem(slot).info.quality <= 25
+										}"
+									></div>
+									<div class="item-slot-durability-fill" v-else style="width: 0%"></div>
+								</div>
+							</div>
+						</div>
+						<div class="divider-bottom"></div>
+						<div class="tradeitem-info">
 							<!-- название -->
 							<div class="item-label" v-if="selectedTradeItemInfo && selectedTradeItemInfo.label">
 								{{ selectedTradeItemInfo.label }}
@@ -479,22 +474,15 @@
 							<div class="item-description" v-if="selectedTradeItemInfo && selectedTradeItemInfo.description">
 								{{ selectedTradeItemInfo.description }}
 							</div>
-							<div class="item-sellinfo" v-if="selectedTradeItemInfo && selectedTradeItemInfo.price && currentShopMode === 'buy'">
-								<div class="divider"></div>
-								<div class="item-selling">
-									<div class="item-label">{{ t.price }}</div>
-									<div class="item-label">{{ Number(selectedTradeItemInfo.price).toFixed(2) }} $</div>
-								</div>
-							</div>
-							<div class="item-sellinfo" v-if="selectedTradeItemInfo && selectedTradeItemInfo.buyPrice && currentShopMode === 'sell'">
-								<div class="divider"></div>
-								<div class="item-selling">
-									<div class="item-label">{{ t.value }}</div>
-									<div class="item-label">{{ Number(selectedTradeItemInfo.buyPrice).toFixed(2) }} $</div>
-								</div>
-							</div>
 						</div>
-						
+						<div class="divider"></div>
+						<div class="trade-controls-section">
+								<div class="trade-top-bar">
+									<div class="prompt-button-text trade-ok">{{ t.accept }}</div><button type="button" class="image-button-ok" @click="confirmTrade" :disabled="myTradeAccepted || Object.keys(myTradeOffers).length === 0 && Object.keys(theirTradeOffers).length === 0"></button>
+									<div class="trade-center-text">{{ currentTradeCategoryTitle }}</div>
+									<div class="prompt-button-text btn-tradecancel">{{ t.cancel }}</div><button type="button" class="image-button-cancel" @click="cancelTrade"></button>
+								</div>								
+							</div>
 						<div class="divider"></div>
 						<div class="item-amount-quantity">
 							<div class="item-quality">

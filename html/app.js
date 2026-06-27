@@ -69,6 +69,34 @@ const InventoryContainer = Vue.createApp({
             }, 0);
             return isNaN(weight) ? 0 : weight;
         },
+		
+		theirTradeWeight() {
+			const weight = Object.values(this.theirTradeOffers).reduce((total, item) => {
+				if (item && item.weight !== undefined && item.amount !== undefined) {
+					return total + item.weight * item.amount;
+				}
+				return total;
+			}, 0);
+		
+			return isNaN(weight) ? 0 : weight;
+		},
+		
+		tradePlayerWeight() {
+			if (!this.isTradeActive) return this.playerWeight;
+			return this.playerWeight + this.theirTradeWeight;
+		},
+		
+		tradeWeightBarClass() {
+			const weightPercentage = (this.tradePlayerWeight / this.maxWeight) * 100;
+		
+			if (weightPercentage < 50) {
+				return "low";
+			} else if (weightPercentage < 75) {
+				return "medium";
+			} else {
+				return "high";
+			}
+		},
         /*playerMoney() {
             let totalMoney = 0;
             Object.values(this.playerInventory).forEach((item) => {
@@ -113,7 +141,7 @@ const InventoryContainer = Vue.createApp({
             }
         },
         shouldCenterInventory() {
-            return this.isOtherInventoryEmpty && this.isTradeInventoryEmpty;
+			return this.isOtherInventoryEmpty && !this.isTradeActive;
         },
 		
 		
@@ -210,26 +238,6 @@ const InventoryContainer = Vue.createApp({
 			return (this.categoryOrder || []).filter(cat => found.includes(cat) || cat === "all");
 		},
 		
-		availableTradeCategories() {
-			const cats = new Set();
-			
-			for (let slot = 1; slot <= this.tradeInventorySlots; slot++) {
-				const item = this.getItemInSlot(slot, "trade");
-				if (!item) continue;
-				
-				// основная категория
-				cats.add(this.getMainCategory(item));
-			
-				// дополнительная категория "sell"
-				//if (item.price) cats.add("sell");
-			}
-			
-			const found = Array.from(cats);
-			
-			//return CATEGORY_ORDER.filter(cat => found.includes(cat) || cat === "all");
-			return (this.categoryOrder || []).filter(cat => found.includes(cat) || cat === "all");
-		},
-
 		filteredPlayerSlots() {
 		// all — как раньше: все слоты
 			if (this.currentPlayerCategory === "all") {
@@ -266,7 +274,8 @@ const InventoryContainer = Vue.createApp({
 		
 		// слоты "другого" инвентаря, где предмет подходит под выбранную категорию
 		filteredOtherSlots() {
-			if (this.currentOtherCategory === "all" && !this.isShopInventory && !this.isTradeInventory) {
+			//if (this.currentOtherCategory === "all" && !this.isShopInventory && !this.isTradeInventory) {
+			if (this.currentOtherCategory === "all" && !this.isShopInventory) {
 				return Array.from({ length: this.otherInventorySlots }, (_, i) => i + 1);
 			}
 			
@@ -308,11 +317,72 @@ const InventoryContainer = Vue.createApp({
 			}
 		
 			return result;
-		},	
+		},
+		
+		myTradeRenderSlots() {
+			return Array.from({ length: this.maxTradeSlots || 10 }, (_, i) => i + 1);
+		},
+		
+		theirTradeRenderSlots() {
+			return Array.from({ length: this.maxTradeSlots || 10 }, (_, i) => i + 1);
+		},
+		
+/*		myTradeRenderSlots() {
+			const result = [];
+		
+			for (let slot = 1; slot <= 10; slot++) {
+				const item = this.getMyTradeItem(slot);
+				if (!item) continue;
+		
+				result.push(slot);
+			}
+		
+			const minSlots = 10;
+			const perRow = 5;
+		
+			if (result.length < minSlots) {
+				while (result.length < minSlots) result.push(null);
+			} else {
+				const remainder = result.length % perRow;
+				if (remainder > 0) {
+					const toAdd = perRow - remainder;
+					for (let i = 0; i < toAdd; i++) result.push(null);
+				}
+			}
+		
+			return result;
+		},
+		
 
+		theirTradeRenderSlots() {
+			const result = [];
+		
+			for (let slot = 1; slot <= 10; slot++) {
+				const item = this.getTheirTradeItem(slot);
+				if (!item) continue;
+		
+				result.push(slot);
+			}
+		
+			const minSlots = 10;
+			const perRow = 5;
+		
+			if (result.length < minSlots) {
+				while (result.length < minSlots) result.push(null);
+			} else {
+				const remainder = result.length % perRow;
+				if (remainder > 0) {
+					const toAdd = perRow - remainder;
+					for (let i = 0; i < toAdd; i++) result.push(null);
+				}
+			}
+		
+			return result;
+		},
+*/
 
 		// слоты "другого" инвентаря, где предмет подходит под выбранную категорию
-		filteredTradeSlots() {
+/*		filteredTradeSlots() {
 			if (this.currentTradeCategory === "all" && this.isTradeInventory) {
 				return Array.from({ length: this.tradeInventorySlots }, (_, i) => i + 1);
 			}
@@ -350,7 +420,7 @@ const InventoryContainer = Vue.createApp({
 		
 			return result;
 		},
-
+*/
 
 		
 		
@@ -390,12 +460,12 @@ const InventoryContainer = Vue.createApp({
 				this._gridClearAllSelections();
 			}
 		},
-		isTradeInventoryEmpty(val) {
-			if (!val) {
-				// если появился другой инвентарь, сбрасываем выделения
-				this._gridClearAllSelections();
-			}
-		},
+//		isTradeInventoryEmpty(val) {
+//			if (!val) {
+//				// если появился другой инвентарь, сбрасываем выделения
+//				this._gridClearAllSelections();
+//			}
+//		},
 		
 		
 		availablePlayerCategories(cats) {
@@ -421,7 +491,7 @@ const InventoryContainer = Vue.createApp({
                 additionalCloseKey: 'KeyI',
                 // Single pane
                 isOtherInventoryEmpty: true,
-				isTradeInventoryEmpty: true,//поставить false для редактирования TRADE инвентаря
+//				isTradeInventoryEmpty: false,//поставить false для редактирования TRADE инвентаря
                 // Error handling
                 errorSlot: null,
                 // Player Inventory
@@ -435,7 +505,7 @@ const InventoryContainer = Vue.createApp({
                 otherInventoryMaxWeight: 1000000,
                 otherInventorySlots: 100,
                 isShopInventory: false,
-				isTradeInventory: false,
+//				isTradeInventory: false,
                 // Where item is coming from
                 inventory: "",
                 // Context Menu
@@ -461,6 +531,8 @@ const InventoryContainer = Vue.createApp({
                 selectedWeapon: null,
                 showWeaponAttachments: false,
                 selectedWeaponAttachments: [],
+				playerId: null,
+                playerName: null,
                 // Dragging and dropping
                 currentlyDraggingItem: null,
                 currentlyDraggingSlot: null,
@@ -478,6 +550,21 @@ const InventoryContainer = Vue.createApp({
 				categoryOrder: ["all", "clothes", "weapons", "provision", "remedies", "ingridient", "herbs", "animals", "material", "kit", "valuable", "documents", "collections", "horse", "misc", "sell"],
 				categoryMap: { default: "misc" },
 				
+				nuiToken: null,
+				
+                // -------- Trade state --------
+                tradeId: null,
+                tradePartner: null,
+                tradePartnerName: null,
+                myTradeOffers: {},
+                theirTradeOffers: {},
+                myTradeAccepted: false,
+                theirTradeAccepted: false,
+                isTradeActive: false, //тут false по умолчанию
+                isTradeComplete: false,
+				maxTradeSlots: 10,
+                // -----------------------------
+				tradeRenderKey: 0,
 				
 				cash: 0,
 				// -------- Localisation UI (fallback EN) --------
@@ -518,6 +605,16 @@ const InventoryContainer = Vue.createApp({
 					cancel: "Cancel",
 					equipped: "Equipped",
 					
+					trade: 'Trade',
+                    your_offer: 'Your Offer',
+                    their_offer: 'Their Offer',
+                    accept: 'Accept',
+                    waiting: 'Waiting for other player...',
+                    cancel: 'Cancel',
+                    accepted: 'Accepted',
+                    no_items_offered: 'No items offered',
+					withh: 'with',
+					
 					categories: {
 						all: "All",
 						clothes: "Clothes",
@@ -540,10 +637,10 @@ const InventoryContainer = Vue.createApp({
                 // ----------------------------------------------
 				
 				notificationDescription: "",
-				playerId: null,
 				scrollBoundElements: [],
 				selectedPlayerItemInfo: null, // хранение выбранного предмета игрока
 				selectedOtherItemInfo: null, // хранение выбранного предмета 2 инвентарь
+				selectedTradeItemInfo: null, //хранение выбраного предмета при трейде
 				
 				// текущая категория для каждого инвентаря
 				currentPlayerCategory: "all",
@@ -584,9 +681,9 @@ const InventoryContainer = Vue.createApp({
             this.maxWeight = data.maxweight;
             this.totalSlots = data.slots;
 			this.playerId = data.playerId || null;
+			this.playerName = data.playerName || null;
             this.playerInventory = {};
             this.otherInventory = {};
-			this.tradeInventory = {};
 			
 			
 			if (data.categories) {
@@ -656,39 +753,6 @@ const InventoryContainer = Vue.createApp({
                 }
 
                 this.isOtherInventoryEmpty = false;
-            }
-			
-			if (data.trade) {
-                if (data.trade && data.trade.inventory) {
-                    if (Array.isArray(data.trade.inventory)) {
-                        data.trade.inventory.forEach((item) => {
-                            if (item && item.slot) {
-                                this.otherInventory[item.slot] = item;
-                            }
-                        });
-                    } else if (typeof data.trade.inventory === "object") {
-                        for (const key in data.trade.inventory) {
-                            const item = data.trade.inventory[key];
-                            if (item && item.slot) {
-                                this.tradeInventory[item.slot] = item;
-                            }
-                        }
-                    }
-                }
-
-                this.tradeInventoryName = data.trade.name;
-                // If an "trade" label is provided, use it, otherwise fallback to t.drop (or the existing one)
-                this.tradeInventoryLabel = data.trade.label || this.t.drop || this.tradeInventoryLabel;
-                this.tradeInventoryMaxWeight = data.trade.maxweight;
-                this.tradeInventorySlots = data.trade.slots;
-
-                if (this.tradeInventoryName.startsWith("trade-")) {
-                    this.isTradeInventory = true;
-                } else {
-                    this.isTradeInventory = false;
-                }
-
-                this.isTradeInventoryEmpty = false;
             }
 			
 			// Tab title (if labels are provided)
@@ -798,10 +862,12 @@ const InventoryContainer = Vue.createApp({
                 });
             }
 
-            Object.assign(this, this.getInitialState());
             try {
                 await axios.post("https://rsg-inventory/CloseInventory", { name: inventoryName });
-                if (wasHotbarEnabled) {
+                
+				Object.assign(this, this.getInitialState());
+				
+				if (wasHotbarEnabled) {
                     this.toggleHotbar({
                         open: true,
                         items: hotbarItems,
@@ -820,11 +886,21 @@ const InventoryContainer = Vue.createApp({
                 return this.playerInventory[slot] || null;
             } else if (inventoryType === "other") {
                 return this.otherInventory[slot] || null;
-            } else if (inventoryType === "trade") {
-                return this.tradeInventory[slot] || null;
-            }
+            } else if (inventoryType === "trade-my") {
+				return this.myTradeOffers?.[slot] || null;
+			} else if (inventoryType === "trade-their") {
+				return this.theirTradeOffers?.[slot] || null;
+			}
             return null;
         },
+		
+		getMyTradeItem(slot) {
+			return this.myTradeOffers?.[slot] || null;
+		},
+		
+		getTheirTradeItem(slot) {
+			return this.theirTradeOffers?.[slot] || null;
+		},
 /*		
 		getItemInSlotPrice(slot, inventoryType) {
 			if (inventoryType === "other") {
@@ -888,10 +964,20 @@ const InventoryContainer = Vue.createApp({
 						this.selectedPlayerItemInfo = this.getItemInSlot(slot, "player") || null;
 					} else if (inventory == "other") {
 						this.selectedOtherItemInfo = this.getItemInSlot(slot, "other") || null;
+					} else if (inventory === "trade-my" || inventory === "trade-their") {
+						this.selectedTradeItemInfo = this.getItemInSlot(slot, inventory) || null;
+						this.showContextMenu = false;//Запрещаем в трейде показ меню
+						return;
 					}
 					const amountToMove = event.shiftKey ? itemInSlot.amount : 1;
 					this.moveItemBetweenInventories(itemInSlot, inventory, amountToMove);//с зажатым shift перемещаем весь стак
                 } else {
+					//Запрещаем в трейде показ меню
+					if (inventory === "trade-my" || inventory === "trade-their" || this.isTradeActive) {
+						this.showContextMenu = false;
+						return;
+					}
+					
 					this.selectedPlayerItemInfo = this.getItemInSlot(slot, "player") || null;
                     this.showContextMenuOptions(event, itemInSlot);
                 }
@@ -1070,29 +1156,32 @@ const InventoryContainer = Vue.createApp({
 				}
             }
 			
-			const targetTradeItemSlotElement = event.target.closest(".trade-inventory .item-slot");
-            if (targetTradeItemSlotElement) {
-                const targetSlot = Number(targetTradeItemSlotElement.dataset.slot);                
-				// 🔹 Обычный перенос (между слотами)
-				if (targetSlot && !(targetSlot === this.currentlyDraggingSlot && this.dragStartInventoryType === "trade")) {
-					this.handleItemDrop("trade", targetSlot);
+			const targetTradeContainer = event.target.closest(".player-trade-item-grid");
+            if (targetTradeContainer && this.dragStartInventoryType === "player" && this.isTradeActive) {
+                this.handleDropOnTradeContainer();			
+            }/* else {
+				//перенос если 2 инвентарь еще не показан
+                const targetInventoryContainer = event.target.closest(".inventory-container");
+                if (targetInventoryContainer && !targetPlayerItemSlotElement && !targetOtherItemSlotElement && this.isOtherInventoryEmpty && !this.isTradeActive) {
+                    this.handleDropOnInventoryContainer();
                 }
-				// Магазин: у слотов нет data-slot из-за сортировки,
-				// поэтому используем фиктивный слот 1 — он всё равно не играет роли.
-				if (!targetSlot && this.isShopInventory) {
-					//this.handleDropOnOtherSlot(1);
-					this.handleItemDrop("trade", 1);
-				}
-            }
+            }*/
 			
 			//перенос если 2 инвентарь еще не показан
             const targetInventoryContainer = event.target.closest(".inventory-container");
-            if (targetInventoryContainer && !targetPlayerItemSlotElement && !targetOtherItemSlotElement && this.isOtherInventoryEmpty) {
+            if (targetInventoryContainer && !targetPlayerItemSlotElement && !targetOtherItemSlotElement && this.isOtherInventoryEmpty && !this.isTradeActive) {
 				this.handleDropOnInventoryContainer();
             }
             this.clearDragData();
         },
         handleDropOnPlayerSlot(targetSlot) {
+			//перенос из трейда в инвентарь
+			if (this.dragStartInventoryType === "trade-my") {
+				this.handleDropFromTradeToPlayer(targetSlot);
+				return;
+			}
+			
+			
 			//Покупка в магазине
             if (this.isShopInventory && this.dragStartInventoryType === "other") {
                 //const { currentlyDraggingSlot, currentlyDraggingItem, transferAmount } = this;
@@ -1230,6 +1319,247 @@ const InventoryContainer = Vue.createApp({
 				this.showContextMenu = false;
 			}
 		},
+		async handleDropOnTradeContainer() {
+			const item = this.currentlyDraggingItem;
+			const DraggingSlot = this.currentlyDraggingSlot;
+			
+			const sourceInventory = this.playerInventory;
+			const sourceItem = sourceInventory[item.slot];
+			//запрещаем перетаскивание если трейд мы подтвердили
+			if (this.myTradeAccepted) {
+				this.inventoryError(draggingSlot);
+				return;
+			}
+			
+			try {
+				// Если нет предмета или слота — сразу выходим
+				if (!item?.name || !DraggingSlot) {
+					this.clearDragData();
+					return;
+				}
+				//console.log("AMOUNT = ", item.amount)
+				//console.log("NAME = ", item.name)
+				let amountToGive = 1;
+				// 💬 Проверяем, есть ли предмет и его количество
+				if (item.amount > 1) {
+					amountToGive = await this.askForAmount();
+					
+					// Если пользователь отменил ввод — выходим
+					if (!amountToGive) {
+						//console.log("❌ Отменено пользователем");
+						this.clearDragData();
+						return;
+					}
+				}
+	
+				// не даём указать больше, чем есть
+				if (amountToGive > item.amount) {
+					amountToGive = item.amount;
+				}				
+				
+				const success = await this.addItemToTrade(item, amountToGive);
+				if (!success) return; //если предмет не перенесся в сервер- то не уменьшаем количество и ничего не делаем
+				
+				//это чтобы визуально в инвентаре игрока после переноса менялось состояние
+				sourceItem.amount -= amountToGive;
+				if (sourceItem.amount <= 0) {
+					delete sourceInventory[item.slot];				
+					this.clearInventorySelection(sourceInventory);// снимаем выделение, т.к. слот пуст
+				}
+			} catch (error) {
+				console.error("❌ Drop failed:", error);
+				this.inventoryError(item?.slot);
+			} finally {
+				this.showContextMenu = false;
+			}
+			
+		},
+		
+		/*
+		async handleDropFromTradeToPlayer(targetSlot) {
+			const item = this.currentlyDraggingItem;
+			const draggingSlot = this.currentlyDraggingSlot;
+		
+			try {
+				if (!item?.name || !draggingSlot) {
+					return;
+				}
+		
+				if (this.dragStartInventoryType !== "trade-my") {
+					return;
+				}
+		
+				if (this.myTradeAccepted) {
+					this.inventoryError(draggingSlot);
+					return;
+				}
+		
+				let amountToGive = 1;
+		
+				if (item.amount > 1) {
+					amountToGive = await this.askForAmount();
+		
+					if (!amountToGive) {
+						return;
+					}
+				}
+		
+				if (amountToGive > item.amount) {
+					amountToGive = item.amount;
+				}
+		
+				const response = await axios.post("https://rsg-inventory/RemoveTradeItem", {
+					tradeId: this.tradeId,
+					tradeSlot: draggingSlot,
+					targetSlot: targetSlot,
+					amount: amountToGive,
+					token: this.nuiToken
+				});
+		
+				if (!response.data) {
+					this.inventoryError(draggingSlot);
+					return;
+				}
+		
+				if (this.selectedTradeItemInfo && this.selectedTradeItemInfo.slot === draggingSlot) {
+					this.selectedTradeItemInfo = null;
+				}
+		
+				if (typeof this.clearTradeSelections === "function") {
+					this.clearTradeSelections();
+				}
+			} catch (error) {
+				console.error("Return item from trade failed:", error);
+				this.inventoryError(draggingSlot);
+			} finally {
+				this.showContextMenu = false;
+				this.clearDragData();
+			}
+		},*/
+		
+		async handleDropFromTradeToPlayer(targetSlot) {
+			const item = this.currentlyDraggingItem;
+			const draggingSlot = this.currentlyDraggingSlot;
+		
+			try {
+				if (!item?.name || !draggingSlot) {
+					return;
+				}
+		
+				if (this.dragStartInventoryType !== "trade-my") {
+					return;
+				}
+		
+				if (this.myTradeAccepted) {
+					this.inventoryError(draggingSlot);
+					return;
+				}
+		
+				const targetSlotNumber = parseInt(targetSlot, 10);
+				if (isNaN(targetSlotNumber)) {
+					this.inventoryError(draggingSlot);
+					return;
+				}
+		
+				const tradeItem = this.myTradeOffers[draggingSlot];
+				if (!tradeItem) {
+					this.inventoryError(draggingSlot);
+					return;
+				}
+		
+				let amountToGive = 1;
+		
+				if (tradeItem.amount > 1) {
+					amountToGive = await this.askForAmount();
+		
+					if (!amountToGive) {
+						return;
+					}
+				}
+		
+				if (amountToGive > tradeItem.amount) {
+					amountToGive = tradeItem.amount;
+				}
+		
+				const targetInventory = this.playerInventory;
+				const targetItem = targetInventory[targetSlotNumber];
+		
+				// 🔹 Проверка локальной визуальной логики ДО запроса:
+				// одинаковые unique нельзя стакать, разные предметы в занятый слот тоже нельзя
+				if (targetItem) {
+					if (tradeItem.name === targetItem.name && targetItem.unique) {
+						this.inventoryError(draggingSlot);
+						return;
+					}
+		
+					if (
+						tradeItem.name !== targetItem.name ||
+						tradeItem.unique ||
+						tradeItem.info?.quality != targetItem.info?.quality
+					) {
+						this.inventoryError(draggingSlot);
+						return;
+					}
+				}
+				
+				const movedItem = {
+					...tradeItem,
+					amount: amountToGive,
+					slot: targetSlotNumber
+				};
+		
+				const response = await axios.post("https://rsg-inventory/RemoveTradeItem", {
+					tradeId: this.tradeId,
+					tradeSlot: draggingSlot,
+					targetSlot: targetSlotNumber,
+					amount: amountToGive,
+					token: this.nuiToken
+				});
+		
+				if (!response.data) {
+					this.inventoryError(draggingSlot);
+					return;
+				}
+		
+				// Сначала рисуем в player inventory
+				if (targetItem) {
+					targetItem.amount += amountToGive;
+					this.selectedPlayerItemInfo = targetItem;
+				} else {
+					targetInventory[targetSlotNumber] = movedItem;
+					this.selectedPlayerItemInfo = targetInventory[targetSlotNumber];
+				}
+		
+				// Потом обновляем/чистим trade slot
+				if (tradeItem.amount > amountToGive) {
+					//tradeItem.amount -= amountToGive; --уменьшать трейды не надо они через сервернй update уменьшаются
+				} else {
+					delete this.myTradeOffers[draggingSlot];
+					this.clearInventorySelection(this.myTradeOffers);
+					this.selectedTradeItemInfo = null;
+				}
+				
+				// Ставим выделение в инвенторе игрока после переноса
+				const safeEvent = {
+					target: document.querySelector(`.player-inventory .item-slot[data-slot="${targetSlotNumber}"]`),
+					currentTarget: document.querySelector(".player-inventory .item-grid")
+				};
+				this.selectSlot(safeEvent, targetInventory[targetSlotNumber], "player");
+		
+			} catch (error) {
+				console.error("Return item from trade failed:", error);
+				this.inventoryError(draggingSlot);
+			} finally {
+				this.showContextMenu = false;
+				this.clearDragData();
+			}
+		},
+		
+		
+		
+		
+		
+		
 		async handleItemDrop(targetInventoryType, targetSlot) {
 			const DraggingSlot = this.currentlyDraggingSlot;
 			// ✅ Сохраняем событие один раз, пока оно ещё "живое" для выделения слота
@@ -2135,6 +2465,208 @@ const InventoryContainer = Vue.createApp({
                     this.busy = false;
                 });
         },
+
+        // -------- Trade Methods --------
+        openTrade(data) {
+            this.isInventoryOpen = true;
+            this.maxWeight = data.maxweight || 0;
+            this.totalSlots = data.slots || 0;
+            this.playerId = data.playerId || null;
+            this.playerName = data.playerName || null;
+            this.cash = data.cash || 0;
+            this.playerInventory = {};
+            this.otherInventory = {};
+            this.isOtherInventoryEmpty = true;
+			this.maxTradeSlots = data.maxTradeSlots || 10;
+
+            if (data.labels) {
+                this.t = { ...this.t, ...data.labels };
+                this.inventoryLabel = this.t.satchel || this.inventoryLabel;
+            }
+
+            if (data.inventory) {
+                if (Array.isArray(data.inventory)) {
+                    data.inventory.forEach((item) => {
+                        if (item && item.slot) {
+                            this.playerInventory[item.slot] = item;
+                        }
+                    });
+                } else if (typeof data.inventory === "object") {
+                    for (const key in data.inventory) {
+                        const item = data.inventory[key];
+                        if (item && item.slot) {
+                            this.playerInventory[item.slot] = item;
+                        }
+                    }
+                }
+            }
+
+            this.tradeId = data.tradeId;
+            this.tradePartner = data.partnerId;
+            this.tradePartnerName = data.partnerName;
+            this.myTradeOffers = {};
+            this.theirTradeOffers = {};
+            this.myTradeAccepted = false;
+            this.theirTradeAccepted = false;
+            this.isTradeActive = true;
+            this.isTradeComplete = false;
+
+            //this.$nextTick(() => {
+            //    this.attachGridScrollListeners();
+            //});
+        },
+/*        updateTrade(data) {
+            const tradeData = data.tradeData;
+            const myId = Number(this.playerId);
+            const isInitiator = Number(tradeData.initiator) === myId;
+            this.myTradeAccepted = isInitiator ? tradeData.initiatorAccepted : tradeData.targetAccepted;
+            this.theirTradeAccepted = isInitiator ? tradeData.targetAccepted : tradeData.initiatorAccepted;
+            this.myTradeOffers = isInitiator ? tradeData.initiatorItems : tradeData.targetItems;
+            this.theirTradeOffers = isInitiator ? tradeData.targetItems : tradeData.initiatorItems;
+			console.log('myTradeOffers keys', Object.keys(this.myTradeOffers));
+			console.log('myTradeOffers raw', this.myTradeOffers);
+        },
+*/
+		updateTrade(data) {
+			const tradeData = data.tradeData;
+			const myId = Number(this.playerId);
+			const isInitiator = Number(tradeData.initiator) === myId;
+		
+			this.myTradeAccepted = isInitiator ? tradeData.initiatorAccepted : tradeData.targetAccepted;
+			this.theirTradeAccepted = isInitiator ? tradeData.targetAccepted : tradeData.initiatorAccepted;
+		
+			const rawMyItems = isInitiator ? tradeData.initiatorItems : tradeData.targetItems;
+			const rawTheirItems = isInitiator ? tradeData.targetItems : tradeData.initiatorItems;
+		
+			const normalizedMy = {};
+			const normalizedTheir = {};
+		
+			if (Array.isArray(rawMyItems)) {
+				rawMyItems.forEach((item) => {
+					if (item && item.slot) {
+						normalizedMy[item.slot] = item;
+					}
+				});
+			} else if (rawMyItems && typeof rawMyItems === "object") {
+				for (const key in rawMyItems) {
+					const item = rawMyItems[key];
+					if (item && item.slot) {
+						normalizedMy[item.slot] = item;
+					}
+				}
+			}
+		
+			if (Array.isArray(rawTheirItems)) {
+				rawTheirItems.forEach((item) => {
+					if (item && item.slot) {
+						normalizedTheir[item.slot] = item;
+					}
+				});
+			} else if (rawTheirItems && typeof rawTheirItems === "object") {
+				for (const key in rawTheirItems) {
+					const item = rawTheirItems[key];
+					if (item && item.slot) {
+						normalizedTheir[item.slot] = item;
+					}
+				}
+			}
+		
+			this.myTradeOffers = normalizedMy;
+			this.theirTradeOffers = normalizedTheir;
+		},
+
+
+        cancelTradeUI() {
+            this.isTradeActive = false;
+            this.isTradeComplete = false;
+            this.tradeId = null;
+            this.tradePartner = null;
+            this.tradePartnerName = null;
+            this.myTradeOffers = {};
+            this.theirTradeOffers = {};
+            this.myTradeAccepted = false;
+            this.theirTradeAccepted = false;
+			this.closeInventory();
+			console.log("Trade Canceled")
+        },
+        completeTradeUI() {
+            this.isTradeActive = false;
+            this.isTradeComplete = true;
+            this.tradeId = null;
+            this.tradePartner = null;
+            this.tradePartnerName = null;
+            this.myTradeOffers = {};
+            this.theirTradeOffers = {};
+            this.myTradeAccepted = false;
+            this.theirTradeAccepted = false;
+            this.closeInventory();
+			console.log("Trade Completed")
+        },
+        async addItemToTrade(item, amount) {
+            if (!this.isTradeActive || !this.tradeId) return;
+            const amountToAdd = amount !== undefined ? amount : item.amount;
+            if (amountToAdd < 1 || amountToAdd > item.amount) return;
+			
+			try {
+				const response = await axios.post("https://rsg-inventory/AddTradeItem", {
+					tradeId: this.tradeId,
+					item: item,
+					amount: amountToAdd,
+				});
+			
+				this.showContextMenu = false;
+				return response?.data === true || response?.data?.ok === true;
+			} catch (error) {
+				console.error("Error adding item to trade:", error);
+				return false;
+			}
+        },
+        async addItemToTradeWithPrompt(item) {
+            if (!this.isTradeActive || !this.tradeId) return;
+            try {
+                const response = await axios.post("https://rsg-inventory/GiveItemAmount");
+                const amount = response.data;
+                if (amount && amount > 0 && amount <= item.amount) {
+                    this.addItemToTrade(item, amount);
+                }
+            } catch (error) {
+                console.error("Error getting trade amount:", error);
+            }
+            this.showContextMenu = false;
+        },
+        removeItemFromTrade(tradeSlot) {
+            if (!this.isTradeActive || !this.tradeId) return;
+            axios.post("https://rsg-inventory/RemoveTradeItem", {
+                tradeId: this.tradeId,
+                tradeSlot: tradeSlot,
+            }).catch((error) => {
+                console.error("Error removing item from trade:", error);
+            });
+        },
+        confirmTrade() {
+            if (!this.isTradeActive || !this.tradeId) return;
+            axios.post("https://rsg-inventory/ConfirmTrade", {
+                tradeId: this.tradeId,
+            }).catch((error) => {
+                console.error("Error confirming trade:", error);
+            });
+        },
+        cancelTrade() {
+            if (!this.isTradeActive || !this.tradeId) return;
+            axios.post("https://rsg-inventory/CancelTrade", {
+                tradeId: this.tradeId,
+            }).catch((error) => {
+                console.error("Error cancelling trade:", error);
+            });
+        },
+        initiateTrade(targetId) {
+            axios.post("https://rsg-inventory/InitiateTrade", {
+                targetId: targetId,
+            }).catch((error) => {
+                console.error("Error initiating trade:", error);
+            });
+        },
+
 		_gridSetupScrollSnap() {
             const containers = document.querySelectorAll(".item-grid");
             if (containers.length === 0) return;
@@ -2152,8 +2684,8 @@ const InventoryContainer = Vue.createApp({
                 container.addEventListener("mouseover", this._gridOnHoverSlot);
                 container.removeEventListener("mouseleave", this._gridClearHighlight);
                 container.addEventListener("mouseleave", this._gridClearHighlight);
-                container.addEventListener("scroll", this._gridUpdateSelectedPosition, true);
-                container.addEventListener("resize", this._gridUpdateSelectedPosition);
+                container.addEventListener("scroll", this.gridUpdateSelectedPosition, true);
+                container.addEventListener("resize", this.gridUpdateSelectedPosition);
                 //container.removeEventListener("click", this._gridOnClickSlot);
                 //container.addEventListener("click", this._gridOnClickSlot);
             });
@@ -2204,7 +2736,7 @@ const InventoryContainer = Vue.createApp({
             selected.style.height = `${rect.height + offset * 2 + correction}px`;
             selected.style.opacity = "1";
         },
-        _gridUpdateSelectedPosition(event) {
+        gridUpdateSelectedPosition(event) {
             const container = event.currentTarget;
             const slot = container._lockedSlot;
             if (!slot) return;
@@ -2249,6 +2781,12 @@ const InventoryContainer = Vue.createApp({
 			} else if (sourceInventory === this.otherInventory) {
 				invType = "other";
 				this.selectedOtherItemInfo = null;
+			} else if (sourceInventory === this.myTradeOffers) {
+				invType = "trade-my";
+				this.selectedTradeItemInfo = null;
+			} else if (sourceInventory === this.theirTradeOffers) {
+				invType = "trade-their";
+				this.selectedTradeItemInfo = null;
 			}
 		
 			if (!invType) return;
@@ -2298,6 +2836,19 @@ const InventoryContainer = Vue.createApp({
 				}
 				else if (inventory == "other") {
 					this.selectedOtherItemInfo = itemInSlot;
+				}
+				else if (inventory === "trade-my" || inventory === "trade-their") {
+					//сбрасываем выделение в обоих сетках
+					this.clearInventorySelection(this.myTradeOffers);
+					this.clearInventorySelection(this.theirTradeOffers);
+					
+					this.selectedTradeItemInfo = itemInSlot;
+					//ставим выделение только в последней кликнутой.
+					grid._lockedSlot = slotEl;
+					if (grid._selected) {
+						grid._selected.style.opacity = "1";
+					}				
+					this.gridUpdateSelectedPosition({ currentTarget: grid });
 				}
 				// Звук переключения (BUMPERLEFT/RIGHT)
 				this.postData('playSound', { soundSet: 'HUD_PLAYER_MENU', soundName: 'SELECT' });
@@ -2469,24 +3020,48 @@ const InventoryContainer = Vue.createApp({
 		
     },
     mounted() {
+        // Inject CSRF token into all outgoing NUI callback calls
+        axios.interceptors.request.use((config) => {
+            if (config.url && config.url.startsWith("https://rsg-inventory/")) {
+                const token = window.nuiToken;
+                if (token && typeof config.data === "object" && config.data !== null) {
+                    config.data.token = token;
+                }
+            }
+            return config;
+        });
+		
         window.addEventListener("keyup", (event) => {
             const code = event.code;
-            if (!this.showAmountPrompt) {
+            if (!this.showAmountPrompt && !this.isTradeActive) { //если не показано окно ввода количества и не трейд
 				if (code === "Escape" || code === "Tab" || code === this.additionalCloseKey) {
 					if (this.isInventoryOpen) {
 						this.closeInventory();
 					}
 				}
-			} else if (this.showAmountPrompt) {
+			} else if (this.showAmountPrompt) { //если показано окно ввода количества
 				if (code === "Escape") {
 					this.cancelAmount();
 				} else if (code === "Enter" || code === "NumpadEnter") {
 					this.confirmAmount();
 				}
+			} else if (this.isTradeActive) { //если это трейд
+				if (code === "Escape" || code === "Tab" || code === this.additionalCloseKey) {
+					if (this.isInventoryOpen) {
+						this.cancelTrade();
+					}
+				} else if (code === "Enter" || code === "NumpadEnter") {
+					this.confirmTrade();
+				}
 			}
         });
 
         window.addEventListener("message", async (event) => {
+            // Store callback token for NUI callback CSRF validation
+            if (event.data.invToken) {
+                this.nuiToken = event.data.invToken;
+                window.nuiToken = event.data.invToken;
+            }
             switch (event.data.action) {
                 case "open":
                     let isValid = await this.validateToken(event.data.token)
@@ -2521,6 +3096,27 @@ const InventoryContainer = Vue.createApp({
 				case "updateMoney":
 					this.cash = event.data.cash;
 					break;
+				
+				case "openTrade":
+                    if (await this.validateToken(event.data.token)) {
+                        this.openTrade(event.data);
+                    }
+                    break;
+                case "updateTrade":
+                    if (await this.validateToken(event.data.token)) {
+                        this.updateTrade(event.data);
+                    }
+                    break;
+                case "cancelTrade":
+                    if (await this.validateToken(event.data.token)) {
+                        this.cancelTradeUI();
+                    }
+                    break;
+                case "completeTrade":
+                    if (await this.validateToken(event.data.token)) {
+                        this.completeTradeUI();
+                    }
+                    break;
                 default:
                     console.warn(`Unexpected action: ${event.data.action}`);
             }

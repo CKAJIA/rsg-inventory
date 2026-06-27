@@ -458,7 +458,9 @@ Inventory.OpenInventoryById = function(source, targetId)
     local targetItems = TargetPlayer.PlayerData.items
     local formattedInventory = {
         name = 'otherplayer-' .. targetId,
-        label = GetPlayerName(targetId),
+        label = (TargetPlayer.PlayerData.charinfo and TargetPlayer.PlayerData.charinfo.firstname)
+            and (TargetPlayer.PlayerData.charinfo.firstname .. ' ' .. TargetPlayer.PlayerData.charinfo.lastname)
+            or GetPlayerName(targetId),
         maxweight = TargetPlayer.PlayerData.weight,
         slots = TargetPlayer.PlayerData.slots,
         inventory = targetItems
@@ -572,6 +574,7 @@ Inventory.ForceDropItem = function(source, item, amount, info, reason)
         type = itemInfo.type,
         unique = itemInfo.unique,
         useable = itemInfo.useable,
+		squality = itemInfo.squality,
         image = itemInfo.image,
         shouldClose = itemInfo.shouldClose,
         combinable = itemInfo.combinable
@@ -655,7 +658,7 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
     if totalWeight + (itemInfo.weight * amount) > inventoryWeight then
         -- If this is a player and not a forced add, try to drop on ground
         if player then
-            return Inventory.ForceDropItem(identifier, item, amount, info, reason or 'inventory full - weight')
+            Inventory.ForceDropItem(identifier, item, amount, info, reason or 'inventory full - weight')
         end
         return false
     end
@@ -677,7 +680,7 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
                 slot = Inventory.GetFirstSlotByItemWithQuality(inventory, item, info.quality)
             else
                 slot = Inventory.GetFirstSlotByItem(inventory, item)
-            end			
+            end
         end
         if slot then
             for _, invItem in pairs(inventory) do
@@ -700,7 +703,7 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
         if not slot then
             -- If this is a player and not a forced add, try to drop on ground
             if player then
-                return Inventory.ForceDropItem(identifier, item, amount, info, reason or 'inventory full - slots')
+                Inventory.ForceDropItem(identifier, item, amount, info, reason or 'inventory full - slots')
             end
             return false
         end

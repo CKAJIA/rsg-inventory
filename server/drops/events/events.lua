@@ -34,8 +34,7 @@ RegisterNetEvent('rsg-inventory:server:openDrop', function(dropId)
     -- Send both player inventory and drop inventory to client
     TriggerClientEvent('rsg-inventory:client:openInventory', src, Player.PlayerData.items, formattedInventory)
 end)
-
-   -- update drops
+    -- update drops
 lib.callback.register('rsg-inventory:updateDrop', function(source, dropId, coords)
     local drop = Drops and Drops[dropId]
     if not drop then

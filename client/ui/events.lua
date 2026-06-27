@@ -4,37 +4,44 @@ local RSGCore = exports['rsg-core']:GetCoreObject()
 -- @param items: table of items to display on the hotbar
 RegisterNetEvent('rsg-inventory:client:hotbar', function(items)
     local token = exports['rsg-core']:GenerateCSRFToken() -- CSRF token for NUI security
+    local invToken = GenerateInventoryCbToken()
     LocalPlayer.state.hotbarShown = not LocalPlayer.state.hotbarShown -- toggle state
     SendNUIMessage({
         action = 'toggleHotbar',
         open = LocalPlayer.state.hotbarShown,
         items = items,
         token = token,
+        invToken = invToken,
     })
 end)
 
 -- Close the inventory UI
 RegisterNetEvent('rsg-inventory:client:closeInv', function()
+    local invToken = GenerateInventoryCbToken()
     SendNUIMessage({
         action = 'close',
+        invToken = invToken,
     })
 end)
 
 -- Update the player's inventory UI with current items
 RegisterNetEvent('rsg-inventory:client:updateInventory', function()
     local token = exports['rsg-core']:GenerateCSRFToken()
+    local invToken = GenerateInventoryCbToken()
     local playerData = RSGCore.Functions.GetPlayerData() -- fetch current player data
     SendNUIMessage({
         action = 'update',
         inventory = playerData.items,
         cash = playerData.money.cash,
         token = token,
+        invToken = invToken,
     })
 end)
 
 RegisterNetEvent('rsg-inventory:client:updateShopInventory', function(shopItems)
     local RSGCore = exports['rsg-core']:GetCoreObject()
     local token = exports['rsg-core']:GenerateCSRFToken()
+    local invToken = GenerateInventoryCbToken()
     local playerData = RSGCore.Functions.GetPlayerData()
     local playerItems = playerData.items
     
@@ -68,6 +75,7 @@ RegisterNetEvent('rsg-inventory:client:updateShopInventory', function(shopItems)
         action = 'update',
         inventory = EnrichedPlayerItems,
         token = token,
+        invToken = invToken,
     })
 end)
 
@@ -77,12 +85,14 @@ end)
 -- @param amount: number of items affected
 RegisterNetEvent('rsg-inventory:client:ItemBox', function(itemData, type, amount)
     local function sendItemBox()
+        local invToken = GenerateInventoryCbToken()
         SendNUIMessage({
             action = 'itemBox',
             item = itemData,
             type = type,
             amount = amount,
-            labels = buildLabels()
+            labels = buildLabels(),
+            invToken = invToken,
         })
 
         -- Update server hotbar if items were added or removed
@@ -114,10 +124,12 @@ end)
 -- @param items: table of items to display
 RegisterNetEvent('rsg-inventory:client:updateHotbar', function(items)
     local token = exports['rsg-core']:GenerateCSRFToken()
+    local invToken = GenerateInventoryCbToken()
     SendNUIMessage({
         action = 'updateHotbar',
         items = items,
         token = token,
+        invToken = invToken,
     })
 end)
 
@@ -146,6 +158,18 @@ function buildLabels()
         received = L('ui.received', 'Received'),
         used     = L('ui.used', 'Used'),
         removed  = L('ui.removed', 'Removed'),
+		
+        trade    = L('ui.trade', 'Trade'),
+        your_offer = L('ui.your_offer', 'Your Offer'),
+        their_offer = L('ui.their_offer', 'Their Offer'),
+        accept   = L('ui.accept', 'Accept'),
+        waiting  = L('ui.waiting', 'Waiting for other player...'),
+        cancel   = L('ui.cancel', 'Cancel'),
+        accepted = L('ui.accepted', 'Accepted'),
+        no_items_offered = L('ui.no_items_offered', 'No items offered'),
+		withh = L('ui.withh', 'with'),
+		
+		
 		amount_start = L('ui.amount_start', 'Amount:'),
 		amount_end = L('ui.amount_end', ''),
 		quality = L('ui.quality', 'Quality:'),
@@ -189,12 +213,13 @@ end
 -- @param other: optional table with extra info (trunk, stash, etc.)
 RegisterNetEvent('rsg-inventory:client:openInventory', function(items, other)
     local token = exports['rsg-core']:GenerateCSRFToken()
+    local invToken = GenerateInventoryCbToken()
     local Player = RSGCore.Functions.GetPlayerData()
     local config = require 'shared.config'
     local function L(k, d) return locale(k) or d end
     local labels = buildLabels()
     SetNuiFocus(true, true) -- focus mouse and keyboard on NUI
-
+	
     SendNUIMessage({
         action     = 'open',
 		categories = config.categories,
@@ -202,8 +227,12 @@ RegisterNetEvent('rsg-inventory:client:openInventory', function(items, other)
         slots      = Player.slots,      -- max inventory slots
         maxweight  = Player.weight,     -- max inventory weight
         playerId   = Player.source or Player.id or Player.citizenid, -- unique player identifier
+        playerName = (Player.charinfo and Player.charinfo.firstname)
+            and (Player.charinfo.firstname .. ' ' .. Player.charinfo.lastname)
+            or Player.source,
         other      = other,             -- context, e.g., trunk inventory
         token      = token,
+        invToken   = invToken,
         closeKey   = config.Keybinds.Close,
         cash       = Player.money.cash,         -- player's money
         labels     = labels,		
@@ -217,6 +246,7 @@ end)
 
 local function openInventoryNUI(items, payload)
     local token  = exports['rsg-core']:GenerateCSRFToken()
+    local invToken = GenerateInventoryCbToken()
     local Player = RSGCore.Functions.GetPlayerData()
     local config = require 'shared.config'
     local labels = buildLabels()
@@ -230,7 +260,11 @@ local function openInventoryNUI(items, payload)
         slots      = Player.slots,
         maxweight  = Player.weight,
         playerId   = Player.source or Player.id or Player.citizenid,
+        playerName = (Player.charinfo and Player.charinfo.firstname)
+            and (Player.charinfo.firstname .. ' ' .. Player.charinfo.lastname)
+            or Player.source,
         token      = token,
+        invToken  = invToken,
         closeKey   = config.Keybinds.Close,
         cash       = Player.money.cash,
         labels     = labels,
