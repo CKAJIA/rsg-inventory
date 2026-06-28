@@ -1,6 +1,92 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
 local config = require 'shared.config'
 
+local tradeInviteActive = false
+local tradeInviteInitiatorId = nil
+local tradeInviteInitiatorName = nil
+
+local tradePromptGroup = GetRandomIntInRange(0, 0xFFFFFF)
+local tradePromptGroupText = CreateVarString(10, 'LITERAL_STRING', 'Trade Request')
+
+local acceptPrompt = nil
+local declinePrompt = nil
+
+local function createPrompt(control, text)
+    local str = CreateVarString(10, 'LITERAL_STRING', text)
+    local prompt = PromptRegisterBegin()
+    PromptSetControlAction(prompt, control)
+    PromptSetText(prompt, str)
+    PromptSetEnabled(prompt, false)
+    PromptSetVisible(prompt, false)
+    PromptSetStandardMode(prompt, true)
+    PromptSetGroup(prompt, tradePromptGroup)
+    PromptRegisterEnd(prompt)
+    return prompt
+end
+
+local function ensureTradePrompts()
+    if acceptPrompt and declinePrompt then
+        return
+    end
+
+    acceptPrompt = createPrompt(`INPUT_FRONTEND_ACCEPT`, locale('ui.accept'))
+    declinePrompt = createPrompt(`INPUT_FRONTEND_CANCEL`, locale('ui.cancel'))
+end
+
+function setTradePromptsVisible(state, initiatorName)
+    ensureTradePrompts()
+
+    PromptSetEnabled(acceptPrompt, state)
+    PromptSetVisible(acceptPrompt, state)
+
+    PromptSetEnabled(declinePrompt, state)
+    PromptSetVisible(declinePrompt, state)
+
+    if initiatorName and state then
+        tradePromptGroupText = CreateVarString(10, 'LITERAL_STRING', initiatorName .. locale('ui.trade_request'))
+    else
+        tradePromptGroupText = CreateVarString(10, 'LITERAL_STRING', 'Trade Request')
+    end
+end
+
+function hideTradeInvite()
+    tradeInviteActive = false
+    tradeInviteInitiatorId = nil
+    tradeInviteInitiatorName = nil
+
+    setTradePromptsVisible(false)
+
+    local token = exports['rsg-core']:GenerateCSRFToken()
+    local invToken = GenerateInventoryCbToken()
+
+    SendNUIMessage({
+        action = 'hideTradeInvite',
+        token = token,
+        invToken = invToken,
+    })
+end
+
+local function showTradeInvite(initiatorId, initiatorName)
+    tradeInviteActive = true
+    tradeInviteInitiatorId = initiatorId
+    tradeInviteInitiatorName = initiatorName
+
+    setTradePromptsVisible(true, initiatorName)
+
+    local token = exports['rsg-core']:GenerateCSRFToken()
+    local invToken = GenerateInventoryCbToken()
+
+    SendNUIMessage({
+        action = 'showTradeInvite',
+        initiatorId = initiatorId,
+        initiatorName = initiatorName,
+        duration = 30000,
+		labels = buildLabels(),
+        token = token,
+        invToken = invToken,
+    })
+end
+--[[
 RegisterNetEvent('rsg-inventory:client:tradeRequest', function(initiatorId, initiatorName)
     lib.registerContext({
         id = 'trade_request',
@@ -22,14 +108,24 @@ RegisterNetEvent('rsg-inventory:client:tradeRequest', function(initiatorId, init
     })
     lib.showContext('trade_request')
 end)
+--]]
 
+RegisterNetEvent('rsg-inventory:client:tradeRequest', function(initiatorId, initiatorName)
+    showTradeInvite(initiatorId, initiatorName)
+end)
+
+RegisterNetEvent('rsg-inventory:client:tradeRequestCancelled', function()
+    hideTradeInvite()
+end)
+--[[
 RegisterNetEvent('rsg-inventory:client:tradeRequestCancelled', function()
 
     lib.hideContext()
 end)
-
+--]]
 RegisterNetEvent('rsg-inventory:client:openTrade', function(tradeId, partnerId, partnerName, items, partnerData)
-
+	hideTradeInvite()
+	
     local token = exports['rsg-core']:GenerateCSRFToken()
     local invToken = GenerateInventoryCbToken()
     local Player = RSGCore.Functions.GetPlayerData()
@@ -92,4 +188,43 @@ RegisterNetEvent('rsg-inventory:client:completeTrade', function()
         token = token,
         invToken = invToken,
     })
+end)
+
+
+CreateThread(function()
+    ensureTradePrompts()
+
+    while true do
+        if tradeInviteActive and tradeInviteInitiatorId then
+            Wait(0)
+
+            PromptSetActiveGroupThisFrame(tradePromptGroup, tradePromptGroupText)
+
+            if PromptHasStandardModeCompleted(acceptPrompt) then
+                local initiatorId = tradeInviteInitiatorId
+                hideTradeInvite()
+                TriggerServerEvent('rsg-inventory:server:acceptTradeRequest', initiatorId)
+            elseif PromptHasStandardModeCompleted(declinePrompt) then
+                local initiatorId = tradeInviteInitiatorId
+                hideTradeInvite()
+                TriggerServerEvent('rsg-inventory:server:declineTradeRequest', initiatorId)
+            end
+        else
+            Wait(250)
+        end
+    end
+end)
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if GetCurrentResourceName() ~= resourceName then return end
+
+    if acceptPrompt then
+        PromptDelete(acceptPrompt)
+        acceptPrompt = nil
+    end
+
+    if declinePrompt then
+        PromptDelete(declinePrompt)
+        declinePrompt = nil
+    end
 end)

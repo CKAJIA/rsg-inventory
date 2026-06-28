@@ -83,7 +83,7 @@ return {
         openInv       = 'openinv',      -- Alternate command to open inventory
     },
     -- Should items in player inventory decay while player is offline
-    ItemsDecayWhileOffline = true,
+    ItemsDecayWhileOffline = false,
     IgnoreShopCategory = false, --включить покупку и продажу независимо от категории магазина
 	
 	

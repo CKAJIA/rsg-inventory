@@ -97,6 +97,13 @@ const InventoryContainer = Vue.createApp({
 				return "high";
 			}
 		},
+		
+		tradeInviteProgress() {
+			if (!this.showTradeInvite || !this.tradeInviteEndsAt || !this.tradeInviteDuration) return 0;
+			const left = Math.max(0, this.tradeInviteEndsAt - this.tradeInviteNow);
+			return Math.min(100, Math.max(0, (left / this.tradeInviteDuration) * 100));
+		},
+		
         /*playerMoney() {
             let totalMoney = 0;
             Object.values(this.playerInventory).forEach((item) => {
@@ -566,6 +573,14 @@ const InventoryContainer = Vue.createApp({
                 // -----------------------------
 				tradeRenderKey: 0,
 				
+				showTradeInvite: false,
+				tradeInviteId: null,
+				tradeInviteName: '',
+				tradeInviteDuration: 30000,
+				tradeInviteEndsAt: 0,
+				tradeInviteNow: Date.now(),
+				tradeInviteTimer: null,
+				
 				cash: 0,
 				// -------- Localisation UI (fallback EN) --------
                 t: {
@@ -613,7 +628,7 @@ const InventoryContainer = Vue.createApp({
                     cancel: 'Cancel',
                     accepted: 'Accepted',
                     no_items_offered: 'No items offered',
-					withh: 'with',
+					trade_request: ' wants to trade with you!',
 					
 					categories: {
 						all: "All",
@@ -761,6 +776,74 @@ const InventoryContainer = Vue.createApp({
             }
 			this.postData('playSound', {	soundSet: "HUD_PLAYER_MENU", soundName: "MENU_ENTER" });
         },
+		
+		
+		startTradeInviteTimer(duration = 30000) {
+			this.clearTradeInviteTimer();
+			this.tradeInviteDuration = duration;
+			this.tradeInviteEndsAt = Date.now() + duration;
+			this.tradeInviteNow = Date.now();
+		
+			this.tradeInviteTimer = setInterval(() => {
+				this.tradeInviteNow = Date.now();
+		
+				if (this.tradeInviteNow >= this.tradeInviteEndsAt) {
+					this.declineTradeInvite(true);
+				}
+			}, 100);
+		},
+		
+		clearTradeInviteTimer() {
+			if (this.tradeInviteTimer) {
+				clearInterval(this.tradeInviteTimer);
+				this.tradeInviteTimer = null;
+			}
+		},
+		
+		showTradeInviteUI(initiatorId, initiatorName, duration = 30000) {
+			this.tradeInviteId = initiatorId;
+			this.tradeInviteName = initiatorName;
+			this.showTradeInvite = true;
+			this.startTradeInviteTimer(duration);
+		},
+		
+		hideTradeInviteUI() {
+			this.clearTradeInviteTimer();
+			this.showTradeInvite = false;
+			this.tradeInviteId = null;
+			this.tradeInviteName = '';
+			this.tradeInviteEndsAt = 0;
+			this.tradeInviteNow = Date.now();
+		},
+		
+		acceptTradeInvite() {
+			if (!this.tradeInviteId) return;
+		
+			axios.post('https://rsg-inventory/AcceptTradeRequest', {
+				initiatorId: this.tradeInviteId
+			}).catch((error) => {
+				console.error('Error accepting trade request:', error);
+			});
+		
+			this.hideTradeInviteUI();
+		},
+		
+		declineTradeInvite(silent = false) {
+			if (!this.tradeInviteId) {
+				this.hideTradeInviteUI();
+				return;
+			}
+		
+			axios.post('https://rsg-inventory/DeclineTradeRequest', {
+				initiatorId: this.tradeInviteId
+			}).catch((error) => {
+				console.error('Error declining trade request:', error);
+			});
+		
+			this.hideTradeInviteUI();
+		},
+		
+		
 		/*
 		updateInventory(data) {
             this.playerInventory = {};
@@ -855,6 +938,17 @@ const InventoryContainer = Vue.createApp({
             let inventoryName = this.otherInventoryName;
             const wasHotbarEnabled = this.wasHotbarEnabled;
             let hotbarItems = []
+			
+			//const inviteState = {
+			//	showTradeInvite: this.showTradeInvite,
+			//	tradeInviteId: this.tradeInviteId,
+			//	tradeInviteName: this.tradeInviteName,
+			//	tradeInviteDuration: this.tradeInviteDuration,
+			//	tradeInviteEndsAt: this.tradeInviteEndsAt,
+			//	tradeInviteNow: this.tradeInviteNow,
+			//	tradeInviteTimer: this.tradeInviteTimer,
+			//};
+			
             if (wasHotbarEnabled) {
                 hotbarItems = Array(5).fill(null).map((_, index) => {
                     const item = this.playerInventory[index + 1];
@@ -2514,6 +2608,7 @@ const InventoryContainer = Vue.createApp({
             //this.$nextTick(() => {
             //    this.attachGridScrollListeners();
             //});
+			this.postData('playSound', {	soundSet: "HUD_PLAYER_MENU", soundName: "MENU_ENTER" });
         },
 /*        updateTrade(data) {
             const tradeData = data.tradeData;
@@ -3033,6 +3128,19 @@ const InventoryContainer = Vue.createApp({
 		
         window.addEventListener("keyup", (event) => {
             const code = event.code;
+			
+			if (this.showTradeInvite) {
+				if (code === 'Escape') {
+					this.declineTradeInvite();
+					return;
+				}
+		
+				if (code === 'Enter' || code === 'NumpadEnter') {
+					this.acceptTradeInvite();
+					return;
+				}
+			}
+			
             if (!this.showAmountPrompt && !this.isTradeActive) { //если не показано окно ввода количества и не трейд
 				if (code === "Escape" || code === "Tab" || code === this.additionalCloseKey) {
 					if (this.isInventoryOpen) {
@@ -3117,6 +3225,33 @@ const InventoryContainer = Vue.createApp({
                         this.completeTradeUI();
                     }
                     break;
+					
+					
+					
+				case 'showTradeInvite':
+					if (await this.validateToken(event.data.token)) {
+						if (event.data.labels) {
+							this.t = { ...this.t, ...event.data.labels };
+						}
+						this.showTradeInviteUI(
+							event.data.initiatorId,
+							event.data.initiatorName,
+							event.data.duration || 30000
+						);
+						this.postData('playSound', {	soundSet: "RDRO_Notoriety_Sounds", soundName: "Defense_Enabled" });
+						//this.postData('playSound', {	soundSet: "HUD_MAIL_SOUNDSET", soundName: "MAIL" });
+					}
+					break;
+				
+				case 'hideTradeInvite':
+					if (await this.validateToken(event.data.token)) {
+						this.hideTradeInviteUI();
+					}
+					break;
+					
+					
+					
+					
                 default:
                     console.warn(`Unexpected action: ${event.data.action}`);
             }

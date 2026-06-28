@@ -167,7 +167,7 @@ function buildLabels()
         cancel   = L('ui.cancel', 'Cancel'),
         accepted = L('ui.accepted', 'Accepted'),
         no_items_offered = L('ui.no_items_offered', 'No items offered'),
-		withh = L('ui.withh', 'with'),
+		trade_request = L('ui.trade_request', ' wants to trade with you3!'),
 		
 		
 		amount_start = L('ui.amount_start', 'Amount:'),

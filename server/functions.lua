@@ -124,6 +124,7 @@ Inventory.CheckItemDecay = function(item, itemInfo, currentTime, decayRateModifi
     local decayRate = (100 / (itemInfo.decay * 60)) * decayRateModifier
     local newQuality = math.max(0, item.info.quality - timeElapsed * decayRate)
     item.info.quality = math.round(newQuality, 1)
+	--item.info.quality = math.floor(newQuality + 0.5) --так получаем качество округленное без дробей
     item.info.lastUpdate = currentTime
 
     return true, item.info.quality, itemInfo.delete == true

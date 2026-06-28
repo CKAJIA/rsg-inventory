@@ -186,14 +186,8 @@
 						</div>
 					</div>
 				</div>
-                <!--<div class="input-container" v-if="!isOtherInventoryEmpty">
-                    <div class="input-wrapper">
-                        <input type="number" v-model="transferAmount" min="1" :placeholder="transferAmount === null ? 'amount' : ''" />
-                        <button @click="clearTransferAmount" class="clear-button">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                </div>-->
+
+				<!--Окно для ввода количества-->
 				<div v-if="showAmountPrompt" class="amount-prompt-overlay">
 					<div class="amount-prompt">
 						<div class="amount-tittle">{{ t.enter_ammount }}</div>
@@ -204,6 +198,7 @@
 						</div>
 					</div>
 				</div>
+				
 				<div class="other-inventory-bg" v-if="!isOtherInventoryEmpty">
 					<div class="other-inventory-header">
 						<div class="labels-container">
@@ -498,33 +493,27 @@
 						</div>
 					</div>
 				</div>
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-            </div>
+
+
+ 
+           </div>
+			
+			<!--Окно приглашения к трейду-->
+			<div class="trade-request-overlay" v-if="showTradeInvite">
+				<div class="trade-prompt">
+					<div class="trade-tittle">{{ tradeInviteName }}{{ t.trade_request }}</div>
+					<div class="prompt-buttons">
+						<!--
+						<div class="prompt-button-text">{{ t.confirm }}</div><button type="button" class="image-button-ok" @click="acceptTradeInvite"></button>
+						<div class="prompt-button-text btn-cancel">{{ t.cancel }}</div><button type="button" class="image-button-cancel" @click="declineTradeInvite"></button>
+						-->
+					</div>
+					<div class="invite-bar">
+						<div class="invite-bar-fill" :style="{ width: tradeInviteProgress + '%' }"></div>
+					</div>
+				</div>
+			</div>
+			
             <div class="hotbar-container" v-if="showHotbar">
                 <div class="hotbar">
                     <div v-for="slot in 5" :key="slot" class="hotbar_bg">

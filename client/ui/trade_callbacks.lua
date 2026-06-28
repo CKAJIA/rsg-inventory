@@ -1,3 +1,28 @@
+RegisterNUICallback('AcceptTradeRequest', function(data, cb)
+    if not data or not data.initiatorId or not data.token or not ValidateInventoryCbToken(data.token) then
+        cb(false)
+        return
+    end
+	
+	hideTradeInvite()
+    TriggerServerEvent('rsg-inventory:server:acceptTradeRequest', data.initiatorId)
+    cb(true)
+end)
+
+RegisterNUICallback('DeclineTradeRequest', function(data, cb)
+    if not data or not data.initiatorId or not data.token or not ValidateInventoryCbToken(data.token) then
+        cb(false)
+        return
+    end
+
+	hideTradeInvite()
+    TriggerServerEvent('rsg-inventory:server:declineTradeRequest', data.initiatorId)
+    cb(true)
+end)
+
+
+
+
 RegisterNUICallback('AddTradeItem', function(data, cb)
 	if not data or not data.item or not data.amount or not data.token or not ValidateInventoryCbToken(data.token) then
         cb({ ok = false })
