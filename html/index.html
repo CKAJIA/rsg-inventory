@@ -375,12 +375,6 @@
 										{{ getMyTradeItem(slot).amount }}{{ typeof getMyTradeItem(slot).maxStock === 'number' ? '/' + getMyTradeItem(slot).maxStock : '' }}
 									</p>
 								</div>
-								<div v-if="isShopInventory && currentShopMode === 'buy' && getMyTradeItem(slot) && getMyTradeItem(slot).price" class="item-price">
-									<p>{{ getMyTradeItem(slot).price % 1 === 0 ? getMyTradeItem(slot).price : getMyTradeItem(slot).price.toFixed(2) }} $</p>
-								</div>
-								<div v-if="isShopInventory && currentShopMode === 'sell' && getMyTradeItem(slot) && getMyTradeItem(slot).buyPrice" class="item-sell-price">
-									<p>{{ getMyTradeItem(slot).buyPrice % 1 === 0 ? getMyTradeItem(slot).buyPrice : getMyTradeItem(slot).buyPrice.toFixed(2) }} $</p>
-								</div>
 								<div class="item-slot-durability" v-if="getMyTradeItem(slot) && 'quality' in getMyTradeItem(slot).info">
 									<div
 										class="item-slot-durability-fill"
@@ -429,12 +423,6 @@
 									<p>
 										{{ getTheirTradeItem(slot).amount }}{{ typeof getTheirTradeItem(slot).maxStock === 'number' ? '/' + getTheirTradeItem(slot).maxStock : '' }}
 									</p>
-								</div>
-								<div v-if="isShopInventory && currentShopMode === 'buy' && getTheirTradeItem(slot) && getTheirTradeItem(slot).price" class="item-price">
-									<p>{{ getTheirTradeItem(slot).price % 1 === 0 ? getTheirTradeItem(slot).price : getTheirTradeItem(slot).price.toFixed(2) }} $</p>
-								</div>
-								<div v-if="isShopInventory && currentShopMode === 'sell' && getTheirTradeItem(slot) && getTheirTradeItem(slot).buyPrice" class="item-sell-price">
-									<p>{{ getTheirTradeItem(slot).buyPrice % 1 === 0 ? getTheirTradeItem(slot).buyPrice : getTheirTradeItem(slot).buyPrice.toFixed(2) }} $</p>
 								</div>
 								<div class="item-slot-durability" v-if="getTheirTradeItem(slot) && 'quality' in getTheirTradeItem(slot).info">
 									<div
