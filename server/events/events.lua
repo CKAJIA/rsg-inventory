@@ -113,15 +113,23 @@ end)
     Server Event: Update player's hotbar
     Sends the first 5 inventory slots to the client for UI update
 --]]
-RegisterNetEvent('rsg-inventory:server:updateHotbar', function()
+RegisterNetEvent('rsg-inventory:server:updateHotbar', function(itemName)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
     if not Player then return end
 
     local items = {}
+	local shouldUpdate = (itemName == nil)
     for slot = 1, 5 do
-        items[slot] = Player.Functions.GetItemBySlot(slot)
+        --items[slot] = Player.Functions.GetItemBySlot(slot)
+		local hotbarItem = Player.Functions.GetItemBySlot(slot)
+		items[slot] = hotbarItem
+		
+		if itemName and hotbarItem and hotbarItem.name == itemName then
+            shouldUpdate = true
+        end		
     end
+	if not shouldUpdate then return end
 
     TriggerClientEvent('rsg-inventory:client:updateHotbar', src, items)
 end)
