@@ -744,7 +744,7 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
 
     if player then 
 		player.Functions.SetPlayerData('items', inventory) 
-		TriggerEvent('rsg-inventory:server:updateHotbar', identifier, item)
+		TriggerEvent('rsg-inventory:server:updateHotbar', identifier)
 	end
     local invName = player and GetPlayerName(identifier) .. ' (' .. identifier .. ')' or identifier
     local addReason = reason or 'No reason specified'
