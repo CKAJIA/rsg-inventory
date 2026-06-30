@@ -83,29 +83,18 @@ end)
 -- @param itemData: table with item info
 -- @param type: string, type of update ('add', 'remove', 'info', etc.)
 -- @param amount: number of items affected
-RegisterNetEvent('rsg-inventory:client:ItemBox', function(itemData, type, amount, noNotice)
+RegisterNetEvent('rsg-inventory:client:ItemBox', function(itemData, type, amount)
     local function sendItemBox()
         local invToken = GenerateInventoryCbToken()
-        if not noNotice then
-			SendNUIMessage({
-				action = 'itemBox',
-				item = itemData,
-				type = type,
-				amount = amount,
-				labels = buildLabels(),
-				invToken = invToken,
-			})
-		end
 
-        -- Update server hotbar if items were added or removed
-		--if type == 'remove' or type == 'add' then
-        --    TriggerServerEvent('rsg-inventory:server:updateHotbar', itemData.name or nil)
-        --end
-		if type == 'remove' or type == 'add' then
-			TriggerServerEvent('rsg-inventory:server:updateHotbar')
-		elseif type == 'use' and itemData and itemData.name then
-			TriggerServerEvent('rsg-inventory:server:updateHotbar', itemData.name)
-		end
+		SendNUIMessage({
+			action = 'itemBox',
+			item = itemData,
+			type = type,
+			amount = amount,
+			labels = buildLabels(),
+			invToken = invToken,
+		})
     end
 
     -- Throttle item box display to avoid spamming
@@ -132,6 +121,7 @@ end)
 RegisterNetEvent('rsg-inventory:client:updateHotbar', function(items)
     local token = exports['rsg-core']:GenerateCSRFToken()
     local invToken = GenerateInventoryCbToken()
+	
     SendNUIMessage({
         action = 'updateHotbar',
         items = items,

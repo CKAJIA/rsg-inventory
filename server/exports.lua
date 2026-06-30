@@ -742,7 +742,10 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
         end
     end
 
-    if player then player.Functions.SetPlayerData('items', inventory) end
+    if player then 
+		player.Functions.SetPlayerData('items', inventory) 
+		TriggerEvent('rsg-inventory:server:updateHotbar', identifier, item)
+	end
     local invName = player and GetPlayerName(identifier) .. ' (' .. identifier .. ')' or identifier
     local addReason = reason or 'No reason specified'
     local resourceName = GetInvokingResource() or 'rsg-inventory'
@@ -757,6 +760,7 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
         '**Reason:** ' .. addReason .. '\n' ..
         '**Resource:** ' .. resourceName
     )
+
     return true
 end
 
@@ -871,6 +875,7 @@ Inventory.RemoveItem = function(identifier, item, amount, slot, reason, isMove)
             info = inventoryItem.info
         }
         TriggerEvent("rsg-inventory:server:itemRemovedFromPlayerInventory", identifier, item, data, reason, isMove)
+		TriggerEvent('rsg-inventory:server:updateHotbar', identifier)
     end
 
     local invName = player and GetPlayerName(identifier) .. ' (' .. identifier .. ')' or identifier
@@ -888,7 +893,7 @@ Inventory.RemoveItem = function(identifier, item, amount, slot, reason, isMove)
         '**Reason:** ' .. removeReason .. '\n' ..
         '**Resource:** ' .. resourceName
     )
-
+	
     return true
 end
 
