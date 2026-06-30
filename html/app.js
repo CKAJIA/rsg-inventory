@@ -3159,6 +3159,11 @@ const InventoryContainer = Vue.createApp({
 						this.cancelTrade();
 					}
 				} else if (code === "Enter" || code === "NumpadEnter") {
+					//Запрещаем подтеверждать трейд пока ничего нет для передачи у обоих
+					const noItemsToTrade =	Object.keys(this.myTradeOffers).length === 0 &&	Object.keys(this.theirTradeOffers).length === 0;
+					if (noItemsToTrade) {
+						return;
+					}
 					this.confirmTrade();
 				}
 			}
@@ -3238,8 +3243,8 @@ const InventoryContainer = Vue.createApp({
 							event.data.initiatorName,
 							event.data.duration || 30000
 						);
-						this.postData('playSound', {	soundSet: "RDRO_Notoriety_Sounds", soundName: "Defense_Enabled" });
-						//this.postData('playSound', {	soundSet: "HUD_MAIL_SOUNDSET", soundName: "MAIL" });
+						//this.postData('playSound', {	soundSet: "RDRO_Notoriety_Sounds", soundName: "Defense_Enabled" });
+						this.postData('playSound', {	soundSet: "HUD_MAIL_SOUNDSET", soundName: "MAIL" });
 					}
 					break;
 				

@@ -356,7 +356,7 @@
 						</div>
 						<div class="my-player-info">
 							<div class="target-player-name">{{ t.your_offer }}</div>
-							<span v-if="myTradeAccepted" class="trade-accepted-badge">{{ t.accepted }}</span>
+							<span v-if="myTradeAccepted" class="trade-accepted-badge"></span>
 						</div>
 					</div>
 					<div class="divider"></div>
@@ -407,7 +407,7 @@
 							<div class="target-player-name">
 								{{ tradePartnerName }}
 							</div>
-							<span v-if="theirTradeAccepted" class="trade-accepted-badge">{{ t.accepted }}</span>
+							<span v-if="theirTradeAccepted" class="trade-accepted-badge"></span>
 						</div>
 						<div class="divider"></div>
 						<div class="item-grid target-trade-item-grid" data-inventory="trade-their">
@@ -491,10 +491,8 @@
 				<div class="trade-prompt">
 					<div class="trade-tittle">{{ tradeInviteName }}{{ t.trade_request }}</div>
 					<div class="prompt-buttons">
-						<!--
-						<div class="prompt-button-text">{{ t.confirm }}</div><button type="button" class="image-button-ok" @click="acceptTradeInvite"></button>
-						<div class="prompt-button-text btn-cancel">{{ t.cancel }}</div><button type="button" class="image-button-cancel" @click="declineTradeInvite"></button>
-						-->
+						<div class="trade-button-text">{{ t.confirm }}</div><button type="button" class="image-button-ok" @click="acceptTradeInvite"></button>
+						<div class="trade-button-text btn-cancel">{{ t.cancel }}</div><button type="button" class="image-button-cancel" @click="declineTradeInvite"></button>
 					</div>
 					<div class="invite-bar">
 						<div class="invite-bar-fill" :style="{ width: tradeInviteProgress + '%' }"></div>
