@@ -49,9 +49,11 @@ files {
     'html/index.html',
     'html/main.css',
     'html/app.js',
+	'html/effects-config.js',
     "shared/*.lua", --- for lib.load
     'locales/*.json',
     'html/images/*.png',
+	'html/effects/*.png',
     'html/*.png',
     'html/assets/*.*',
 }

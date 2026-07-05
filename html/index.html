@@ -13,6 +13,7 @@
         <script src="https://cdn.jsdelivr.net/npm/@floating-ui/dom@1.6.1"></script>
         <script src="https://unpkg.com/floating-vue@5.2.2/dist/floating-vue.umd.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
+		<script src="effects-config.js"></script>
         <script src="app.js" defer></script>
     </head>
     <body>
@@ -152,11 +153,17 @@
 							</div>
 						
 							<!-- эффекты -->
-							<div class="item-effects" v-if="selectedPlayerItemInfo && selectedPlayerItemInfo.effects && selectedPlayerItemInfo.effects.length">
-								<ul>
-									<li v-for="(effect, i) in selectedPlayerItemInfo.effects" :key="i">{{ effect }}</li>
-								</ul>
-							</div>						
+							<div class="item-effects" v-if="resolvedPlayerEffects.length">
+								<div class="effects-row">
+									<div class="effect-item" v-for="(effect, i) in resolvedPlayerEffects" :key="i">
+										<img v-if="!effect.ringTexture" class="effect-bg"	src="effects/effects_bg.png" alt="">										
+										<img v-if="effect.ringTexture" class="effect-ring" :src="'effects/' + effect.ringTexture" alt="">
+										<!--<img class="fx-tint effect-icon" :class="{'effect-red': effect.color === 'red', 'effect-yellow': effect.color === 'yellow', 'effect-green': effect.color === 'green'}" :data-effect-key="effect.key" :src="'effects/' + effect.icon" :alt="effect.key"/>-->
+										<img class="effect-icon" :data-effect-key="effect.key" :src="'effects/' + effect.icon" :alt="effect.key"/>
+										<div v-if="effect.number" class="effect-level">{{ effect.number }}</div>
+									</div>
+								</div>
+							</div>
 						
 							<!-- описание -->
 							<div class="item-description" v-if="selectedPlayerItemInfo && selectedPlayerItemInfo.description">
@@ -291,11 +298,16 @@
 							</div>
 						
 							<!-- эффекты -->
-							<div class="item-effects" v-if="selectedOtherItemInfo && selectedOtherItemInfo.effects && selectedOtherItemInfo.effects.length">
-								<ul>
-									<li v-for="(effect, i) in selectedOtherItemInfo.effects" :key="i">{{ effect }}</li>
-								</ul>
-							</div>						
+							<div class="item-effects" v-if="resolvedOtherEffects.length">
+								<div class="effects-row">
+									<div class="effect-item" v-for="(effect, i) in resolvedOtherEffects" :key="i">
+										<img v-if="!effect.ringTexture" class="effect-bg"	src="effects/effects_bg.png" alt="">										
+										<img v-if="effect.ringTexture" class="effect-ring" :src="'effects/' + effect.ringTexture" alt="">										
+										<img class="effect-icon" :data-effect-key="effect.key" :src="'effects/' + effect.icon" :alt="effect.key"/>
+										<div v-if="effect.number" class="effect-level">{{ effect.number }}</div>
+									</div>
+								</div>
+							</div>
 						
 							<!-- описание -->
 							<div class="item-description" v-if="selectedOtherItemInfo && selectedOtherItemInfo.description">
@@ -447,11 +459,17 @@
 							</div>
 						
 							<!-- эффекты -->
-							<div class="item-effects" v-if="selectedTradeItemInfo && selectedTradeItemInfo.effects && selectedTradeItemInfo.effects.length">
-								<ul>
-									<li v-for="(effect, i) in selectedTradeItemInfo.effects" :key="i">{{ effect }}</li>
-								</ul>
-							</div>						
+							<div class="item-effects" v-if="resolvedTradeEffects.length">
+								<div class="effects-row">
+									<div class="effect-item" v-for="(effect, i) in resolvedTradeEffects" :key="i">
+										<img v-if="!effect.ringTexture" class="effect-bg"	src="effects/effects_bg.png" alt="">										
+										<img v-if="effect.ringTexture" class="effect-ring" :src="'effects/' + effect.ringTexture" alt="">
+										<!--<img class="fx-tint effect-icon" :class="{'effect-red': effect.color === 'red', 'effect-yellow': effect.color === 'yellow', 'effect-green': effect.color === 'green'}" :data-effect-key="effect.key" :src="'effects/' + effect.icon" :alt="effect.key"/>-->
+										<img class="effect-icon" :data-effect-key="effect.key" :src="'effects/' + effect.icon" :alt="effect.key"/>										
+										<div v-if="effect.number" class="effect-level">{{ effect.number }}</div>
+									</div>
+								</div>
+							</div>
 						
 							<!-- описание -->
 							<div class="item-description" v-if="selectedTradeItemInfo && selectedTradeItemInfo.description">

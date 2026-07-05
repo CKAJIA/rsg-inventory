@@ -446,7 +446,7 @@ img.weight-icon {
 }
 
 .item-slot-amount p {
-    padding-top: 1px;
+    padding-top: 0.2vmin;
 	opacity: 1.0;
 }
 
@@ -1232,8 +1232,8 @@ img.id-icon {
 
 .item-info {
 	position: relative;
-    height: 18vmin;
-	max-height: 18vmin;
+    height: 19vmin;
+	max-height: 19vmin;
 	color: white;
     align-items: center;
     align-content: center;
@@ -1246,8 +1246,8 @@ img.id-icon {
 
 .tradeitem-info {
 	position: relative;
-    height: 14.7vmin;
-	max-height: 14.7vmin;
+    height: 15.7vmin;
+	max-height: 15.7vmin;
 	color: white;
     align-items: center;
     align-content: center;
@@ -1418,6 +1418,7 @@ button.player-side-button {
     font-size: 2vmin;
     color: #ffffffd6;
 	margin-top: 0.7vmin;
+	line-height: 1.15;
 }
 
 .trade-inventory-bg,
@@ -1443,7 +1444,7 @@ button.player-side-button {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    height: 2.6vmin;
+    height: 2.0vmin;
     margin: 0.1vmin 0 0.5vmin 0.2vmin;
 }
 
@@ -1703,5 +1704,106 @@ input#amountInput:focus {
 	margin: 0.1vmin 0 0vmin 0.5vmin;
 	width: 2vmin;
     height: 2vmin;
+}
+
+
+
+
+.item-effects {
+	width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /*margin: 0.8vmin 0 0.4vmin 0;*/
+    height: 5.5vmin;
+	padding-top: 0.7vmin;
+}
+
+.effects-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.2vmin;
+    flex-wrap: nowrap;
+    /*max-width: 100%;*/
+}
+/*
+.effect-item {
+    position: relative;
+    width: 4.8vmin;
+    height: 4.8vmin;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+*/
+.effect-icon {
+    width: 5.5vmin;
+    height: 5.5vmin;
+    object-fit: contain;
+    position: relative;
+    z-index: 2;
+    pointer-events: none;
+    user-select: none;
+	/*padding-top: 0.3vmin;*/
+}
+
+.effect-ring {
+    position: absolute;
+    inset: 0;
+    width: 5.5vmin;
+    height: 5.5vmin;
+    object-fit: contain;
+    z-index: 1;
+    pointer-events: none;
+    user-select: none;
+}
+
+.effect-color-normal {
+    filter: none;
+}
+
+.effect-item {
+    position: relative;
+    width: 5.5vmin;
+    height: 5.5vmin;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.effect-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.effect-level {
+    position: absolute;
+    top: -0.5vmin;
+    right: -0.5vmin;
+    width: 2.5vmin;
+    height: 2.5vmin;
+    padding: 0.4vmin 0.3vmin 0.2vmin 0.3vmin;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #000;
+	background-image: url('./effects/item_effect_duration_category_background.png');
+    background-repeat: no-repeat;
+    background-size: contain;
+    background-position: center;
+	
+    font-family: "rdrlino";
+    font-size: 2.0vmin;
+    /*line-height: 1;*/
+    z-index: 4;
+    pointer-events: none;
 }
 

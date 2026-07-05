@@ -60,6 +60,28 @@ const InventoryContainer = Vue.createApp({
         return this.getInitialState();		
     },
     computed: {
+		
+		resolvedPlayerEffects() {
+			return this.resolveItemEffects(this.selectedPlayerItemInfo)
+		},
+		
+		resolvedOtherEffects() {
+			return this.resolveItemEffects(this.selectedOtherItemInfo)
+		},
+		
+		resolvedTradeEffects() {
+			return this.resolveItemEffects(this.selectedTradeItemInfo)
+		},
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
         playerWeight() {
             const weight = Object.values(this.playerInventory).reduce((total, item) => {
                 if (item && item.weight !== undefined && item.amount !== undefined) {
@@ -486,6 +508,27 @@ const InventoryContainer = Vue.createApp({
 			}
 		},
 		
+/**		
+		resolvedPlayerEffects: {
+			handler() {
+				this.applyUniversalTint();
+			},
+			deep: true
+		},
+		resolvedOtherEffects: {
+			handler() {
+				this.applyUniversalTint();
+			},
+			deep: true
+		},
+		resolvedTradeEffects: {
+			handler() {
+				this.applyUniversalTint();
+			},
+			deep: true
+		},
+**/		
+		
     },
     methods: {
         getInitialState() {
@@ -776,6 +819,172 @@ const InventoryContainer = Vue.createApp({
             }
 			this.postData('playSound', {	soundSet: "HUD_PLAYER_MENU", soundName: "MENU_ENTER" });
         },
+		
+		
+		//Покраска текстур. Чтобы покрасить в нужный цвет нужно только добавить fx-tint effect-red
+		/**
+		createEffectSvgFilter(filterName, rgb = { r: 255, g: 255, b: 255 }) {
+			const safeId = String(filterName).replace(/[^a-zA-Z0-9_-]/g, "");
+			const svgId = `svg-${safeId}`;
+			const filterId = `filter-${safeId}`;
+		
+			if (!document.getElementById(svgId)) {
+				const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+				svg.setAttribute("id", svgId);
+				svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+				svg.setAttribute("style", "position:absolute;width:0;height:0;pointer-events:none;");
+		
+				svg.innerHTML = `
+					<defs>
+						<filter id="${filterId}">
+							<feComponentTransfer color-interpolation-filters="sRGB">
+								<feFuncR type="linear" slope="${rgb.r / 255}" />
+								<feFuncG type="linear" slope="${rgb.g / 255}" />
+								<feFuncB type="linear" slope="${rgb.b / 255}" />
+								<feFuncA type="table" tableValues="0 1" />
+							</feComponentTransfer>
+						</filter>
+					</defs>
+				`;
+		
+				document.body.appendChild(svg);
+			}
+		
+			return filterId;
+		},
+
+		updateEffectSvgFilter(filterName, rgb = { r: 255, g: 255, b: 255 }) {
+			const safeId = String(filterName).replace(/[^a-zA-Z0-9_-]/g, "");
+			const svgId = `svg-${safeId}`;
+			const filterId = `filter-${safeId}`;
+			const svg = document.getElementById(svgId);
+		
+			if (!svg) {
+				return this.createEffectSvgFilter(filterName, rgb);
+			}
+		
+			const filter = svg.querySelector(`#${filterId}`);
+			if (filter) {
+				filter.innerHTML = `
+					<feComponentTransfer color-interpolation-filters="sRGB">
+						<feFuncR type="linear" slope="${rgb.r / 255}" />
+						<feFuncG type="linear" slope="${rgb.g / 255}" />
+						<feFuncB type="linear" slope="${rgb.b / 255}" />
+						<feFuncA type="table" tableValues="0 1" />
+					</feComponentTransfer>
+				`;
+			}
+		
+			return filterId;
+		},
+
+		getTintRgbByClass(el) {
+			if (el.classList.contains("effect-red")) {
+				return { r: 150, g: 0, b: 0 };
+			}
+			if (el.classList.contains("effect-yellow")) {
+				return { r: 255, g: 234, b: 114 };
+			}
+			if (el.classList.contains("effect-green")) {
+				return { r: 110, g: 170, b: 80 };
+			}
+			if (el.classList.contains("effect-blue")) {
+				return { r: 90, g: 140, b: 220 };
+			}
+			return null;
+		},
+
+		applyUniversalTint(rootSelector = document) {
+			this.$nextTick(() => {
+				const root = typeof rootSelector === "string"
+					? document.querySelector(rootSelector) || document
+					: rootSelector || document;
+		
+				const elements = root.querySelectorAll("img.fx-tint");
+		
+				elements.forEach((el, index) => {
+					const rgb = this.getTintRgbByClass(el);
+		
+					if (!rgb) {
+						el.style.filter = "none";
+						el.style.webkitFilter = "none";
+						return;
+					}
+		
+					const key =
+						el.dataset.effectKey ||
+						el.dataset.tintKey ||
+						el.className ||
+						`fx-tint-${index}`;
+		
+					const filterId = this.updateEffectSvgFilter(`universal-${key}-${index}`, rgb);
+		
+					el.style.filter = `url(#${filterId})`;
+					el.style.webkitFilter = `url(#${filterId})`;
+				});
+			});
+		},		
+**/		
+/**
+		resolveItemEffects(item) {
+			if (!item || !item.name) return []
+			
+			const itemEffectKeys = ITEM_EFFECTS[item.name]
+			if (!Array.isArray(itemEffectKeys) || !itemEffectKeys.length) return []
+			
+			return itemEffectKeys
+				.slice(0, EFFECTS_MAX_DISPLAY)
+				.map((effectKey) => {
+				const effect = EFFECTS[effectKey]
+				if (!effect) return null
+			
+				return {
+					key: effectKey,
+					icon: effect.icon,
+					color: effect.color || "none",
+					ring: !!effect.ring,
+					number: effect.number || null
+				}
+			})
+			.filter(Boolean)
+		},
+**/	
+		resolveItemEffects(item) {
+			if (!item || !item.name) return [];
+		
+			const itemEffects = ITEM_EFFECTS[item.name];
+			if (!Array.isArray(itemEffects) || !itemEffects.length) return [];
+		
+			return itemEffects
+				.slice(0, EFFECTS_MAX_DISPLAY)
+				.map((effect) => {
+					if (!effect || typeof effect !== "object") return null;
+		
+					return {
+						key: effect.key,
+						icon: effect.icon,
+						color: effect.color || "none",
+						//ring: !!effect.ring,
+						ringTexture: effect.ringTexture || (effect.ring ? "overpowered.png" : null),
+						number: effect.number ?? null
+					};
+				})
+				.filter(Boolean);
+		},
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
 		
 		
 		startTradeInviteTimer(duration = 30000) {
@@ -3115,6 +3324,9 @@ const InventoryContainer = Vue.createApp({
 		
     },
     mounted() {
+		//this.applyUniversalTint();//покраска текстур
+		
+		
         // Inject CSRF token into all outgoing NUI callback calls
         axios.interceptors.request.use((config) => {
             if (config.url && config.url.startsWith("https://rsg-inventory/")) {
@@ -3282,6 +3494,9 @@ const InventoryContainer = Vue.createApp({
 		
 		
     },
+	/*updated() {
+		this.applyUniversalTint();//покраска текстур
+	},*/
 });
 
 InventoryContainer.use(FloatingVue);
