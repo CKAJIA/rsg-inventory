@@ -32,6 +32,9 @@ client_scripts {
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
     'server/functions.lua',
+	
+	'server/item_states.lua',
+	
     'server/shops/functions.lua',
     'server/exports.lua',
     'server/shops/exports.lua',

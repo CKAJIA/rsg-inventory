@@ -1,5 +1,6 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
 Inventory = Inventory or {}
+Inventory.PlayerNameIndexes = Inventory.PlayerNameIndexes or {}
 local config = require 'shared.config'
 
 Inventory.TYPES = {
@@ -158,12 +159,29 @@ end
 --- @param player table The player object.
 Inventory.CheckPlayerItemsDecay = function(player)
     local needsUpdate, removedItems = Inventory.CheckItemsDecay(player.PlayerData.items)
-
+	local src = player.PlayerData.source
+	
     if needsUpdate then
-        player.Functions.SetPlayerData('items', player.PlayerData.items)
-        for _, item in pairs(removedItems) do 
-            TriggerClientEvent('rsg-inventory:client:ItemBox', player.PlayerData.source, RSGCore.Shared.Items[item.name], 'remove', item.amount)
-        end
+		player.Functions.SetPlayerData('items', player.PlayerData.items)
+		-------------------------------------------------------------
+		-- Удаляем из индекса только реально удалённые decay-предметы
+		for slot, item in pairs(removedItems) do
+			if item then				
+				Inventory.NameIndexRemove(src, item.name, slot)
+				-- Предмет исчез из-за decay.
+                -- Проверяем только правила, где он участвует.
+                Inventory.ItemStates.OnItemChanged(src, item.name)
+				
+				Inventory.NotifyItemChanged(src, item.name, {
+					action = 'remove',
+					amount = item.amount,
+					slot = slot,
+					reason = 'decay'
+				})
+				
+				TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item.name], 'remove', item.amount)
+			end
+		end
     end
 end
 
@@ -172,10 +190,26 @@ end
 --- @param item table item object.
 Inventory.CheckPlayerItemDecay = function(player, item) 
     local updated, quality, delete = Inventory.CheckItemDecay(item)
+	local src = player.PlayerData.source
     if updated then
         if delete and quality <= 0 then
             player.PlayerData.items[item.slot] = nil
-            TriggerClientEvent('rsg-inventory:client:ItemBox', player.PlayerData.source, RSGCore.Shared.Items[item.name], 'remove', item.amount)
+			-------------------------------------------------------
+			Inventory.NameIndexRemove(src, item.name, item.slot)
+			-------------------------------------------------------
+			-- Последний экземпляр этого предмета мог исчезнуть.
+			player.Functions.SetPlayerData('items', player.PlayerData.items)
+			
+			Inventory.ItemStates.OnItemChanged(src, item.name, player)
+			
+			Inventory.NotifyItemChanged(src, item.name, {
+				action = 'remove',
+				amount = item.amount,
+				slot = item.slot,
+				reason = 'decay'
+			})
+			
+            TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item.name], 'remove', item.amount)
         end
         
         player.Functions.SetPlayerData('items', player.PlayerData.items)
@@ -202,4 +236,119 @@ Inventory.GetCoords = function(inventoryId, src)
     else
         warn(("Unexpected inventory type - '%s'"):format(inventoryType))
     end
+end
+
+
+
+
+
+
+
+Inventory.GetNameIndex = function(source)
+    return Inventory.PlayerNameIndexes[source]
+end
+
+Inventory.BuildNameIndex = function(source, items)
+    local index = {}
+
+    for slot, item in pairs(items or {}) do
+        if item and item.name then
+            local name = item.name:lower()
+            index[name] = index[name] or {}
+            index[name][slot] = item
+        end
+    end
+	
+	Inventory.PlayerNameIndexes[source] = index
+	return index
+end
+
+--- Adds or updates an item reference in the player name index.
+--- @param player table RSGCore player object
+--- @param item table Item data
+Inventory.NameIndexAdd = function(source, item)
+    if not source or not item or not item.name or not item.slot then
+        return
+    end
+
+    local index = Inventory.PlayerNameIndexes[source]
+    if not index then
+        index = {}
+        Inventory.PlayerNameIndexes[source] = index
+    end
+
+    local name = item.name:lower()
+	index[name] = index[name] or {}
+    index[name][item.slot] = item
+end
+
+--- Removes an item slot from the player name index.
+--- @param player table RSGCore player object
+--- @param itemName string Item name
+--- @param slot number Item slot
+Inventory.NameIndexRemove = function(source, itemName, slot)
+    if not source or not itemName or not slot then
+        return
+    end
+
+    local index = Inventory.PlayerNameIndexes[source]
+    if not index then return end
+
+    local name = itemName:lower()
+    local itemsBySlot = index[name]
+
+    if not itemsBySlot then return end
+
+    itemsBySlot[tonumber(slot)] = nil
+
+    -- Удаляем ключ имени, если предметов этого типа больше нет
+    if not next(itemsBySlot) then
+        index[name] = nil
+    end
+end
+
+--- Replaces the indexed reference after amount/info update.
+--- Нужен для полной ясности, хотя при ссылке на ту же таблицу часто не обязателен.
+--- @param player table RSGCore player object
+--- @param item table Item data
+Inventory.NameIndexUpdate = function(source, item)
+    Inventory.NameIndexAdd(source, item)
+end
+
+
+AddEventHandler('playerDropped', function()
+    Inventory.PlayerNameIndexes[source] = nil
+end)
+
+
+
+
+--На будущее для чека изменений в инвентаре
+Inventory.NotifyItemChanged = function(source, itemName, payload)
+    if not source or not itemName then return end
+    payload = payload or {}
+    payload.item = tostring(itemName):lower()
+
+    local total = 0
+    local index = Inventory.GetNameIndex(source)
+    local stacks = index and index[payload.item]
+
+    if stacks then
+        for _, itemData in pairs(stacks) do
+            total = total + (tonumber(itemData.amount) or 0)
+        end
+    end
+
+    payload.total = total
+
+    TriggerEvent('rsg-inventory:server:itemChanged', source, payload.item, payload)
+    TriggerClientEvent('rsg-inventory:client:itemChanged', source, payload.item, payload)
+end
+
+Inventory.NotifyInventoryChanged = function(source, payload)
+    if not source then return end
+    payload = payload or {}
+
+    TriggerEvent('rsg-inventory:server:inventoryChanged', source, payload)
+    TriggerClientEvent('rsg-inventory:client:inventoryChanged', source, payload)
 end

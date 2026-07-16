@@ -43,6 +43,8 @@ Inventory.LoadInventory = function(source, citizenid)
     if #missingItems > 0 then
         print(('The following items were removed for player %s as they no longer exist: %s'):format(GetPlayerName(source), table.concat(missingItems, ', ')))
     end
+	
+	Inventory.BuildNameIndex(source, loadedInventory)
 
     return loadedInventory
 end
@@ -88,7 +90,20 @@ exports('SaveInventory', Inventory.SaveInventory)
 Inventory.SetInventory = function(source, items)
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return end
+
+	-- items уже применён к PlayerData, теперь создаём новый индекс
+	Inventory.BuildNameIndex(source, items)
+	---------------------------------------------------------------
     Player.Functions.SetPlayerData('items', items)
+	
+	if Inventory.ItemStates then
+		Inventory.ItemStates.OnInventoryChanged(source)
+	end
+	
+	Inventory.NotifyInventoryChanged(source, {
+		action = 'set'
+	})
+
     if not Player.Offline then
         local logMessage = string.format('**%s (citizenid: %s | id: %s)** items set: %s', GetPlayerName(source), Player.PlayerData.citizenid, source, json.encode(items))
         TriggerEvent('rsg-log:server:CreateLog', 'playerinventory', 'SetInventory', 'blue', logMessage)
@@ -105,12 +120,21 @@ exports('SetInventory', Inventory.SetInventory)
 --- @return boolean|nil - Returns true if the value was set successfully, false otherwise.
 Inventory.SetItemData = function(source, itemName, key, val)
     if not itemName or not key then return false end
+    if key == 'name' then return false end
+
     local Player = RSGCore.Functions.GetPlayer(source)
-    if not Player then return end
+    if not Player then return false end
+
     local item = Inventory.GetItemByName(source, itemName)
     if not item then return false end
+
     item[key] = val
     Player.PlayerData.items[item.slot] = item
+    Inventory.NameIndexUpdate(source, item)
+	if Inventory.ItemStates then
+		Inventory.ItemStates.OnItemChanged(source, item.name)
+	end
+
     Player.Functions.SetPlayerData('items', Player.PlayerData.items)
     return true
 end
@@ -203,6 +227,7 @@ exports('GetTotalWeight', Inventory.GetTotalWeight)
 --- @param source number - The player's server ID.
 --- @param item string - The name of the item to retrieve.
 --- @return table|nil - item data if found, nil otherwise.
+--[[
 Inventory.GetItemByName = function(source, item)
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return end
@@ -210,6 +235,32 @@ Inventory.GetItemByName = function(source, item)
     local slot = Inventory.GetFirstSlotByItem(items, tostring(item):lower())
     return items[slot]
 end
+--]]
+Inventory.GetItemByName = function(source, item)
+    local Player = RSGCore.Functions.GetPlayer(source)
+    if not Player then return end
+
+    local index = Inventory.GetNameIndex(source)
+    if not index then        
+        index = Inventory.BuildNameIndex(source, Player.PlayerData.items)
+    end
+
+    local indexedItems = index and index[tostring(item):lower()]
+    if not indexedItems then return end
+
+    local firstSlot, firstItem
+
+    for slot, itemData in pairs(indexedItems) do
+        slot = tonumber(slot)
+        if itemData and slot and (not firstSlot or slot < firstSlot) then
+            firstSlot = slot
+            firstItem = itemData
+        end
+    end
+
+    return firstItem
+end
+
 
 exports('GetItemByName', Inventory.GetItemByName)
 
@@ -217,6 +268,7 @@ exports('GetItemByName', Inventory.GetItemByName)
 --- @param source number The player's server ID.
 --- @param item string The name of the item to search for.
 --- @return table|nil - containing the items with the specified name.
+--[[
 Inventory.GetItemsByName = function(source, item)
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return end
@@ -228,6 +280,27 @@ Inventory.GetItemsByName = function(source, item)
             items[#items + 1] = PlayerItems[slot]
         end
     end
+    return items
+end
+--]]
+Inventory.GetItemsByName = function(source, item)
+    local Player = RSGCore.Functions.GetPlayer(source)
+    if not Player then return end
+
+    local index = Inventory.GetNameIndex(source)
+    if not index then
+        index = Inventory.BuildNameIndex(source, Player.PlayerData.items)
+    end
+
+    local itemStacks = index and index[tostring(item):lower()]
+    if not itemStacks then return {} end
+
+    local items = {}
+
+    for _, itemData in pairs(itemStacks) do
+        items[#items + 1] = itemData
+    end
+
     return items
 end
 
@@ -287,6 +360,41 @@ Inventory.GetItemCount = function(source, items)
 end
 
 exports('GetItemCount', Inventory.GetItemCount)
+
+
+--- Получаем количество предмета по имени быстро из индексированой таблицы 
+--- Находит все стаки предметов с этим именем и складывает их и возвращает общее количество
+Inventory.GetItemAmountIndex = function(source, itemName)
+    local Player = RSGCore.Functions.GetPlayer(source)
+    if not Player or not Player.PlayerData then
+        return 0
+    end
+
+	--вот этот чек можно и удалить для скорости
+    Inventory.CheckPlayerItemsDecay(Player)
+
+    itemName = tostring(itemName):lower()
+
+    local itemIndex = Inventory.GetNameIndex(source)
+    if not itemIndex then
+        itemIndex = Inventory.BuildNameIndex(source, Player.PlayerData.items or {})
+    end
+
+    local itemStacks = itemIndex and itemIndex[itemName]
+    if not itemStacks then
+        return 0
+    end
+
+    local amount = 0
+    for _, itemData in pairs(itemStacks) do
+        amount = amount + (tonumber(itemData.amount) or 0)
+    end
+
+    return amount
+end
+
+exports('GetItemAmountIndex', Inventory.GetItemAmountIndex)
+
 
 --- Checks if an item can be added to a player's inventory.
 --- @param source number The player's server ID.
@@ -374,7 +482,16 @@ Inventory.ClearInventory = function(source, filterItems)
             end
         end
     end
+	Inventory.BuildNameIndex(source, savedItemData)
     player.Functions.SetPlayerData('items', savedItemData)
+	-- Инвентарь заменён целиком: пересчитываем все правила.
+	if Inventory.ItemStates then
+		Inventory.ItemStates.OnInventoryChanged(source)
+	end
+	Inventory.NotifyInventoryChanged(source, {
+		action = 'clear'
+	})
+	
     if not player.Offline then
         local logMessage = string.format('**%s (citizenid: %s | id: %s)** inventory cleared', GetPlayerName(source), player.PlayerData.citizenid, source)
         TriggerEvent('rsg-log:server:CreateLog', 'playerinventory', 'ClearInventory', 'red', logMessage)
@@ -394,6 +511,7 @@ exports('ClearInventory', Inventory.ClearInventory)
 --- @param items string|table The name of the item or a table of item names.
 --- @param amount number (optional) The minimum amount required for each item.
 --- @return boolean - Returns true if the player has the item(s) with the specified amount, false otherwise.
+--[[
 Inventory.HasItem = function(source, items, amount)
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return false end
@@ -427,6 +545,125 @@ Inventory.HasItem = function(source, items, amount)
 
     return false
 end
+--]]
+
+--- Checks if player has item(s) using itemsByName index.
+--- @param source number
+--- @param items string|table
+--- @param amount number|nil
+--- @param anyItem boolean|nil When true, any item from array is enough.
+--- @return boolean
+Inventory.HasItem = function(source, items, amount, anyItem)
+    local Player = RSGCore.Functions.GetPlayer(source)
+    if not Player then return false end
+
+    Inventory.CheckPlayerItemsDecay(Player)
+
+    local index = Inventory.GetNameIndex(source)
+    if not index then
+        index = Inventory.BuildNameIndex(source, Player.PlayerData.items)
+    end
+
+    if not index then return false end
+
+    local function hasAmount(itemName, requiredAmount)
+        local indexedItems = index[tostring(itemName):lower()]
+        if not indexedItems then return false end
+
+        local total = 0
+
+        for _, itemData in pairs(indexedItems) do
+            if itemData and itemData.amount then
+                total = total + itemData.amount
+
+                if total >= requiredAmount then
+                    return true
+                end
+            end
+        end
+
+        return false
+    end
+
+    -- Один предмет
+    if type(items) == 'string' then
+        return hasAmount(items, tonumber(amount) or 1)
+    end
+
+    if type(items) ~= 'table' then
+        return false
+    end
+
+    local isArray = table.type(items) == 'array'
+
+    -- Массив имён:
+    -- { 'bread', 'water', 'coffee' }
+    if isArray then
+        local requiredAmount = tonumber(amount) or 1
+
+        -- Нужно хотя бы одно имя из списка
+        if anyItem then
+            for _, itemName in ipairs(items) do
+                if hasAmount(itemName, requiredAmount) then
+                    return true
+                end
+            end
+
+            return false
+        end
+
+        -- Нужны все имена из списка
+        for _, itemName in ipairs(items) do
+            if not hasAmount(itemName, requiredAmount) then
+                return false
+            end
+        end
+
+        return true
+    end
+
+    -- Таблица требований:
+    -- { bread = 5, water = 2 }
+    -- Здесь anyItem тоже можно поддержать логично:
+    -- true = достаточно выполнить хотя бы одно требование.
+    if anyItem then
+        for itemName, requiredAmount in pairs(items) do
+            if hasAmount(itemName, tonumber(requiredAmount) or 1) then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    -- Нужны все требования таблицы
+    for itemName, requiredAmount in pairs(items) do
+        if not hasAmount(itemName, tonumber(requiredAmount) or 1) then
+            return false
+        end
+    end
+
+    return true
+end
+
+--[[
+-- Есть ли хотя бы 1 bread
+Player.Functions.HasItem('bread')
+-- Один конкретный предмет: минимум 5 суммарно по всем стакам
+Player.Functions.HasItem('bread', 5)
+-- Все предметы списка: по 1 каждого
+Player.Functions.HasItem({'bread', 'water', 'coffee'})
+-- Все предметы списка: минимум по 3 каждого
+Player.Functions.HasItem({'bread', 'water', 'coffee'}, 3)
+-- Любой один предмет из списка: минимум 1
+Player.Functions.HasItem({'pocketwatch1', 'pocketwatch2'}, 1, true)
+-- Нужны все требования
+Player.Functions.HasItem({bread = 5, water = 2})
+-- Достаточно выполнить одно требование
+Player.Functions.HasItem({goldbar = 1, moneybag = 5}, nil, true)
+--]]
+
+
 
 exports('HasItem', Inventory.HasItem)
 
@@ -742,8 +979,29 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
         end
     end
 
-    if player then 
-		player.Functions.SetPlayerData('items', inventory) 
+    if player then
+		-- slot уже содержит либо новый предмет, либо обновлённый стак
+		local indexedItem = inventory[slot]
+	
+		if indexedItem then
+			Inventory.NameIndexAdd(identifier, indexedItem)
+		end
+		--------------------------------------------------------------
+		player.Functions.SetPlayerData('items', inventory)
+		--проверка состояния нужных предметов(есть ли они в инвентаре)
+		--нужно именно здесь
+		if player and Inventory.ItemStates then
+			Inventory.ItemStates.OnItemChanged(identifier, item)
+		end
+		
+		Inventory.NotifyItemChanged(identifier, item, {
+			action = 'add',
+			amount = amount,
+			slot = slot,
+			reason = reason,
+			info = inventory[slot] and inventory[slot].info
+		})
+		
 		TriggerEvent('rsg-inventory:server:updateHotbar', identifier)
 	end
     local invName = player and GetPlayerName(identifier) .. ' (' .. identifier .. ')' or identifier
@@ -826,8 +1084,16 @@ Inventory.RemoveItem = function(identifier, item, amount, slot, reason, isMove)
         inventoryItem.amount = inventoryItem.amount - amount
         if inventoryItem.amount <= 0 then
             inventory[itemKey] = nil
+			
+			if player then
+				Inventory.NameIndexRemove(identifier, inventoryItem.name, itemKey)
+			end
         else
             inventory[itemKey] = inventoryItem
+			
+			if player then
+				Inventory.NameIndexAdd(identifier, inventoryItem)
+			end
         end
 
     else
@@ -843,8 +1109,16 @@ Inventory.RemoveItem = function(identifier, item, amount, slot, reason, isMove)
 
                 if invItem.amount <= 0 then
                     inventory[itemKey] = nil
+					
+					if player then
+						Inventory.NameIndexRemove(identifier, invItem.name, itemKey)
+					end
                 else
                     inventory[itemKey] = invItem
+					
+					if player then
+						Inventory.NameIndexAdd(identifier, invItem)
+					end
                 end
 
                 if totalRemoved >= amount then
@@ -867,6 +1141,23 @@ Inventory.RemoveItem = function(identifier, item, amount, slot, reason, isMove)
 
     if player then 
         player.Functions.SetPlayerData('items', inventory)
+		--проверка состояния нужных предметов(есть ли они в инвентаре)
+		--нужно именно здесь
+		if player and Inventory.ItemStates then
+			Inventory.ItemStates.OnItemChanged(identifier, item)
+		end
+		
+		Inventory.NotifyItemChanged(identifier, item, {
+			action = 'remove',
+			amount = amount,
+			slot = slot,
+			reason = reason,
+			isMove = isMove
+		})
+		
+		
+		
+		
         -- Trigger event hook for external resources to handle custom 'after removal' logic
         -- This event is not registered in rsg-inventory itself - it's for third-party resources
         local data = {
