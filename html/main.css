@@ -1236,7 +1236,7 @@ img.id-icon {
 	max-height: 19vmin;
 	color: white;
     align-items: center;
-    align-content: center;
+    /*align-content: center;*/
     text-align: center;
     padding: 2vmin 3vmin 1vmin 3vmin;
     font-family: hapnaslabserif;
