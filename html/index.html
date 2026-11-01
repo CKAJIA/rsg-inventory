@@ -362,8 +362,10 @@
 					<div class="my-selectors other-controls-section">
 						<div class="item-tradeinfo">
 							<div class="item-trading">
-								<div class="item-tradelabel" v-if="myTradeAccepted">{{ t.waiting }}</div>
-								<div class="item-tradelabel" v-if="Object.keys(myTradeOffers).length === 0 && Object.keys(theirTradeOffers).length === 0">{{ t.no_items_offered }}</div>
+								<!-- Причина блокировки имеет приоритет над ожиданием и пустым предложением. -->
+								<div class="item-tradelabel trade-capacity-warning" v-if="tradeCapacityMessage">{{ tradeCapacityMessage }}</div>
+								<div class="item-tradelabel" v-else-if="myTradeAccepted">{{ t.waiting }}</div>
+								<div class="item-tradelabel" v-else-if="Object.keys(myTradeOffers).length === 0 && Object.keys(theirTradeOffers).length === 0">{{ t.no_items_offered }}</div>
 							</div>
 						</div>
 						<div class="my-player-info">
@@ -479,7 +481,8 @@
 						<div class="divider"></div>
 						<div class="trade-controls-section">
 								<div class="trade-top-bar">
-									<div class="prompt-button-text trade-ok">{{ t.accept }}</div><button type="button" class="image-button-ok" @click="confirmTrade" :disabled="myTradeAccepted || Object.keys(myTradeOffers).length === 0 && Object.keys(theirTradeOffers).length === 0"></button>
+									<!-- При отказе серверной проверки кнопка подтверждения остаётся заблокированной. -->
+									<div class="prompt-button-text trade-ok">{{ t.accept }}</div><button type="button" class="image-button-ok" @click="confirmTrade" :disabled="tradeCapacityBlocked || myTradeAccepted || Object.keys(myTradeOffers).length === 0 && Object.keys(theirTradeOffers).length === 0"></button>
 									<div class="trade-center-text">{{ currentTradeCategoryTitle }}</div>
 									<div class="prompt-button-text btn-tradecancel">{{ t.cancel }}</div><button type="button" class="image-button-cancel" @click="cancelTrade"></button>
 								</div>								

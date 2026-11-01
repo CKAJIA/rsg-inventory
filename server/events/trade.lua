@@ -2,6 +2,7 @@ local RSGCore = exports['rsg-core']:GetCoreObject()
 local config    = require 'shared.config'
 Trades = Trades or {}
 local pendingRequests = {}
+local returnEscrow
 
 local function getCharName(source)
     local player = RSGCore.Functions.GetPlayer(source)
@@ -13,7 +14,7 @@ local function getCharName(source)
     return GetPlayerName(source)
 end
 
--- Rate limiting
+-- Ограничивает частые повторные действия с трейдом.
 local tradeCooldowns = {}
 local function isOnCooldown(src)
     local now = GetGameTimer()
@@ -22,13 +23,86 @@ local function isOnCooldown(src)
     return false
 end
 
+-- Проверяет участника и citizenid: новый персонаж с прежним source не получит чужие предметы.
+local function ownsTrade(trade, src)
+    local side = trade.initiator == src and 'initiator' or (trade.target == src and 'target' or nil)
+    if not side then return false end
+    local player = RSGCore.Functions.GetPlayer(src)
+    local expected = trade.ownerCitizenIds and trade.ownerCitizenIds[side]
+    return player and (not expected or player.PlayerData.citizenid == expected)
+end
+
+-- Планирует приём целых предложений обеими сторонами без реальной выдачи.
+-- Исходящие предметы уже находятся в escrow; проверяется итоговый вес и слоты.
+-- Возвращает данные для формы и два готовых плана для завершения обмена.
+function Inventory.GetTradeCapacity(trade)
+    if not ownsTrade(trade, trade.initiator) or not ownsTrade(trade, trade.target) then
+        return {initiatorCanReceive = false, targetCanReceive = false,
+            initiatorMessage = locale('error.trade_recipient_full'), targetMessage = locale('error.trade_recipient_full')}
+    end
+    local first, firstReason = Inventory.PlanIncomingItems(trade.initiator, trade.targetItems)
+    local second, secondReason = Inventory.PlanIncomingItems(trade.target, trade.initiatorItems)
+    local canFirst, canSecond = first ~= nil, second ~= nil
+    local capacity = {
+        initiatorCanReceive = canFirst, targetCanReceive = canSecond,
+        initiatorReason = firstReason, targetReason = secondReason,
+        initiatorMessage = not canSecond and locale('error.trade_recipient_full') or (not canFirst and locale('error.trade_your_full') or ''),
+        targetMessage = not canFirst and locale('error.trade_recipient_full') or (not canSecond and locale('error.trade_your_full') or '')
+    }
+    return capacity, first, second
+end
+
+-- Добавляет вместимость в сообщение формы и сбрасывает согласие при переполнении.
+-- Ранее нажатое «Принять» не должно подтверждать уже недопустимое предложение.
+local function addCapacity(trade, data)
+    data.capacity = Inventory.GetTradeCapacity(trade)
+    trade.capacity = data.capacity
+    if not data.capacity.initiatorCanReceive or not data.capacity.targetCanReceive then
+        trade.initiatorAccepted, trade.targetAccepted = false, false
+        data.initiatorAccepted, data.targetAccepted = false, false
+    end
+    return data
+end
+
+-- Отправляет участникам одну актуальную версию предложений и причин блокировки.
+local function publishTrade(trade)
+    local data = addCapacity(trade, {
+        id = trade.id, initiator = trade.initiator,
+        initiatorItems = trade.initiatorItems, targetItems = trade.targetItems,
+        initiatorAccepted = trade.initiatorAccepted, targetAccepted = trade.targetAccepted
+    })
+    TriggerClientEvent('rsg-inventory:client:updateTrade', trade.initiator, data)
+    TriggerClientEvent('rsg-inventory:client:updateTrade', trade.target, data)
+end
+
+local pendingCapacityChecks = {}
+-- Пересчитывает открытые трейды только при изменении инвентаря участника.
+-- Несколько событий одного действия объединяются в один отложенный пересчёт; постоянного цикла нет.
+local function queueCapacityCheck(src)
+    if pendingCapacityChecks[src] then return end
+    pendingCapacityChecks[src] = true
+    SetTimeout(0, function()
+        pendingCapacityChecks[src] = nil
+        for _, trade in pairs(Trades) do
+            if not trade.executing and (trade.initiator == src or trade.target == src) then publishTrade(trade) end
+        end
+    end)
+end
+AddEventHandler('rsg-inventory:server:itemChanged', queueCapacityCheck)
+AddEventHandler('rsg-inventory:server:inventoryChanged', queueCapacityCheck)
+
 -- Возвращает весь tradeItem обратно его владельцу.
+-- Сначала возвращает строго в инвентарь, а при переполнении явно создаёт одну сумку.
+-- При полном отказе возвращает false: запись escrow сохраняется для повторной попытки.
 local function returnTradeItemToOwner(ownerId, tradeItem, reason)
     if not tradeItem or not tradeItem.name or not tradeItem.amount or tradeItem.amount <= 0 then
         return true
     end
 
-    local ok = Inventory.AddItem(ownerId, tradeItem.name, tradeItem.amount, false, tradeItem.info, reason)
+    local ok = Inventory.AddItemStrict(ownerId, tradeItem.name, tradeItem.amount, false, tradeItem.info, reason)
+    if not ok and RSGCore.Functions.GetPlayer(ownerId) then
+        ok = Inventory.ForceDropItem(ownerId, tradeItem.name, tradeItem.amount, tradeItem.info, reason)
+    end
     if not ok then
         print(('[TRADE][RETURN][FAIL] owner=%s item=%s amount=%s reason=%s')
             :format(ownerId, tradeItem.name, tradeItem.amount, reason))
@@ -41,6 +115,8 @@ end
 --Инициализация трейда
 RegisterNetEvent('rsg-inventory:server:initiateTrade', function(targetId)
     local src = source
+    targetId = Inventory.ValidAmount(targetId)
+    if not targetId or targetId == src then return end
     if isOnCooldown(src) then return end
 
     local player = RSGCore.Functions.GetPlayer(src)
@@ -125,7 +201,8 @@ RegisterNetEvent('rsg-inventory:server:acceptTradeRequest', function(initiatorId
         initiatorAccepted = false,
         targetAccepted = false,
         nextSlot = { initiator = 1, target = 1 },
-        executing = false
+        executing = false,
+        ownerCitizenIds = {initiator = initiator.PlayerData.citizenid, target = player.PlayerData.citizenid}
     }
 
     pendingRequests[initiatorId] = nil
@@ -135,6 +212,7 @@ RegisterNetEvent('rsg-inventory:server:acceptTradeRequest', function(initiatorId
     
     TriggerClientEvent('rsg-inventory:client:openTrade', initiatorId, tradeId, src, getCharName(src), initiatorItems, player.PlayerData)
     TriggerClientEvent('rsg-inventory:client:openTrade', src, tradeId, initiatorId, getCharName(initiatorId), targetItems, initiator.PlayerData)
+    publishTrade(Trades[tradeId])
 end)
 
 --Отмена трейда
@@ -157,8 +235,8 @@ RegisterNetEvent('rsg-inventory:server:addTradeItem', function(tradeId, item, am
     if isOnCooldown(src) then return end
 
     local trade = Trades[tradeId]
-    if not trade then return end
-    if trade.initiator ~= src and trade.target ~= src then return end
+    if not trade or trade.executing then return end
+    if not ownsTrade(trade, src) then return end
 
     local side = src == trade.initiator and 'initiator' or 'target'
     local otherSide = src == trade.initiator and 'target' or 'initiator'
@@ -189,7 +267,7 @@ RegisterNetEvent('rsg-inventory:server:addTradeItem', function(tradeId, item, am
     end
     ------------------------------------------------
 
-    -- ESCROW: Remove item from player inventory immediately
+    -- Временно изымаем предмет из слотов игрока в предложение обмена (escrow).
     if not Inventory.RemoveItem(src, invItem.name, amount, item.slot, 'trade escrow', true) then return end
 
     trade[side .. 'Accepted'] = false
@@ -227,20 +305,22 @@ RegisterNetEvent('rsg-inventory:server:addTradeItem', function(tradeId, item, am
     
     print('TRADE SLOT KEY', tradeSlot, 'ITEM SLOT FIELD', tradeItems[tradeSlot].slot, 'FROM', tradeItems[tradeSlot].fromSlot)
     
+    addCapacity(trade, tradeData)
     TriggerClientEvent('rsg-inventory:client:updateTrade', trade.initiator, tradeData)
     TriggerClientEvent('rsg-inventory:client:updateTrade', trade.target, tradeData)
 end)
 --]]
 
 --RegisterNetEvent('rsg-inventory:server:addTradeItem', function(tradeId, item, amount)
+-- Переносит проверенный серверный слот в escrow и пересчитывает вместимость всего предложения.
 lib.callback.register('rsg-inventory:server:addTradeItem', function(source, tradeId, item, amount)
     local src = source
 
     if isOnCooldown(src) then return false end
 
     local trade = Trades[tradeId]
-    if not trade then return false end
-    if trade.initiator ~= src and trade.target ~= src then return false end
+    if not trade or trade.executing then return false end
+    if not ownsTrade(trade, src) then return false end
 
     local side = src == trade.initiator and 'initiator' or 'target'
     local otherSide = src == trade.initiator and 'target' or 'initiator'
@@ -250,8 +330,8 @@ lib.callback.register('rsg-inventory:server:addTradeItem', function(source, trad
     local player = RSGCore.Functions.GetPlayer(src)
     if not player then return false end
     
-    amount = tonumber(amount) or 1
-    if amount < 1 then return false end
+    amount = Inventory.ValidAmount(amount)
+    if not amount or type(item) ~= 'table' or not Inventory.ValidAmount(item.slot) then return false end
 
     local invItem = Inventory.GetItemBySlot(src, item.slot)
     if not invItem or invItem.name ~= item.name or invItem.amount < amount then return false end
@@ -274,7 +354,7 @@ lib.callback.register('rsg-inventory:server:addTradeItem', function(source, trad
             local tradeItem = tradeItems[i]
             local tradeQuality = tradeItem and tradeItem.info and tradeItem.info.quality or nil
 
-            if tradeItem and not tradeItem.unique and tradeItem.name == invItem.name and tradeQuality == invQuality then
+            if tradeItem and Inventory.CanStackItem(tradeItem, invItem.name, invItem.info) then
                 existingTradeSlot = i
                 break
             end
@@ -298,7 +378,7 @@ lib.callback.register('rsg-inventory:server:addTradeItem', function(source, trad
     end
     ------------------------------------------------
 
-    -- ESCROW: Remove item from player inventory immediately
+    -- Временно изымаем предмет из слотов игрока в предложение обмена (escrow).
     if not Inventory.RemoveItem(src, invItem.name, amount, item.slot, 'trade escrow', true) then return false end
 
     trade[side .. 'Accepted'] = false
@@ -335,12 +415,14 @@ lib.callback.register('rsg-inventory:server:addTradeItem', function(source, trad
         targetAccepted = trade.targetAccepted
     }
     
+    addCapacity(trade, tradeData)
     TriggerClientEvent('rsg-inventory:client:updateTrade', trade.initiator, tradeData)
     TriggerClientEvent('rsg-inventory:client:updateTrade', trade.target, tradeData)
     
     return true
 end)
 
+-- Возвращает позицию из escrow строго в инвентарь; при отказе предложение сохраняется.
 lib.callback.register('rsg-inventory:server:removeTradeItem', function(source, tradeId, tradeSlot, targetSlot, amount)
     local src = source
     if isOnCooldown(src) then return false end
@@ -348,13 +430,14 @@ lib.callback.register('rsg-inventory:server:removeTradeItem', function(source, t
 
     tradeSlot = tonumber(tradeSlot)
     targetSlot = tonumber(targetSlot)
-    amount = tonumber(amount) or 1
+    amount = Inventory.ValidAmount(amount, 1)
+    if not amount then return false end
 
     if not tradeSlot or tradeSlot < 1 or not targetSlot or targetSlot < 1 then return false end
 
     local trade = Trades[tradeId]
-    if not trade then return false end
-    if trade.initiator ~= src and trade.target ~= src then return false end
+    if not trade or trade.executing then return false end
+    if not ownsTrade(trade, src) then return false end
 
     local side = (src == trade.initiator) and 'initiator' or 'target'
     local otherSide = (src == trade.initiator) and 'target' or 'initiator'
@@ -385,7 +468,7 @@ lib.callback.register('rsg-inventory:server:removeTradeItem', function(source, t
         end
     end
 
-    local added = Inventory.AddItem(src, escrowedItem.name, amount, targetSlot, escrowedItem.info, 'trade remove return')
+    local added = Inventory.AddItemStrict(src, escrowedItem.name, amount, targetSlot, escrowedItem.info, 'trade remove return')
     if not added then
         print('FAIL_ADD_ITEM')
         return false
@@ -410,6 +493,7 @@ lib.callback.register('rsg-inventory:server:removeTradeItem', function(source, t
         targetAccepted = trade.targetAccepted
     }
 
+    addCapacity(trade, tradeData)
     TriggerClientEvent('rsg-inventory:client:updateTrade', trade.initiator, tradeData)
     TriggerClientEvent('rsg-inventory:client:updateTrade', trade.target, tradeData)
 
@@ -423,7 +507,7 @@ RegisterNetEvent('rsg-inventory:server:removeTradeItem', function(tradeId, trade
     if isOnCooldown(src) then return end
 
     local trade = Trades[tradeId]
-    if not trade then return end
+    if not trade or trade.executing then return end
 
     local side = src == trade.initiator and 'initiator' or 'target'
     local otherSide = src == trade.initiator and 'target' or 'initiator'
@@ -440,7 +524,7 @@ RegisterNetEvent('rsg-inventory:server:removeTradeItem', function(tradeId, trade
         tradeItems[i].slot = i
     end
 
-    Inventory.AddItem(src, escrowedItem.name, escrowedItem.amount, false, escrowedItem.info, 'trade remove return')
+    Inventory.AddItemStrict(src, escrowedItem.name, escrowedItem.amount, false, escrowedItem.info, 'trade remove return')
 
     trade[side .. 'Accepted'] = false
     trade[otherSide .. 'Accepted'] = false
@@ -454,20 +538,30 @@ RegisterNetEvent('rsg-inventory:server:removeTradeItem', function(tradeId, trade
         targetAccepted = trade.targetAccepted
     }
 
+    addCapacity(trade, tradeData)
     TriggerClientEvent('rsg-inventory:client:updateTrade', trade.initiator, tradeData)
     TriggerClientEvent('rsg-inventory:client:updateTrade', trade.target, tradeData)
 end)
 --]]
+-- Проверяет вместимость на сервере, даже если клиент обошёл блокировку кнопки формы.
 RegisterNetEvent('rsg-inventory:server:confirmTrade', function(tradeId)
     local src = source
     if isOnCooldown(src) then return end
 
     local trade = Trades[tradeId]
-    if not trade then return end
-    if trade.initiator ~= src and trade.target ~= src then return end
+    if not trade or trade.executing then return end
+    if not ownsTrade(trade, src) then return end
 
     local side = src == trade.initiator and 'initiator' or 'target'
     --local otherSide = src == trade.initiator and 'target' or 'initiator'
+
+    local capacity = Inventory.GetTradeCapacity(trade)
+    if not capacity.initiatorCanReceive or not capacity.targetCanReceive then
+        if not capacity.targetCanReceive then Inventory.NotifyTransferFull(trade.initiator, trade.target) end
+        if not capacity.initiatorCanReceive then Inventory.NotifyTransferFull(trade.target, trade.initiator) end
+        publishTrade(trade)
+        return
+    end
 
     trade[side .. 'Accepted'] = true
 
@@ -479,6 +573,7 @@ RegisterNetEvent('rsg-inventory:server:confirmTrade', function(tradeId)
         initiatorAccepted = trade.initiatorAccepted,
         targetAccepted = trade.targetAccepted
     }
+    addCapacity(trade, tradeData)
     TriggerClientEvent('rsg-inventory:client:updateTrade', trade.initiator, tradeData)
     TriggerClientEvent('rsg-inventory:client:updateTrade', trade.target, tradeData)
 
@@ -490,25 +585,11 @@ RegisterNetEvent('rsg-inventory:server:confirmTrade', function(tradeId)
     local targetPlayer = RSGCore.Functions.GetPlayer(trade.target)
     
     if not initiatorPlayer or not targetPlayer then
-        TriggerClientEvent('rsg-inventory:client:cancelTrade', trade.initiator)
-        TriggerClientEvent('rsg-inventory:client:cancelTrade', trade.target)
-        Trades[tradeId] = nil
+        returnEscrow(trade, 'trade player unavailable return')
         return
     end
-    
     if #(GetEntityCoords(GetPlayerPed(trade.initiator)) - GetEntityCoords(GetPlayerPed(trade.target))) > Inventory.MAX_DIST then
-        TriggerClientEvent('ox_lib:notify', trade.initiator, { title = locale('error.error'), description = locale('error.player_too_far'), type = 'error', duration = 5000 })
-        TriggerClientEvent('ox_lib:notify', trade.target, { title = locale('error.error'), description = locale('error.player_too_far'), type = 'error', duration = 5000 })
-        -- Return escrowed items
-        for _, item in pairs(trade.initiatorItems) do
-            returnTradeItemToOwner(trade.initiator, item, 'trade distance return')
-        end
-        for _, item in pairs(trade.targetItems) do
-            returnTradeItemToOwner(trade.target, item, 'trade distance return')
-        end
-        TriggerClientEvent('rsg-inventory:client:cancelTrade', trade.initiator)
-        TriggerClientEvent('rsg-inventory:client:cancelTrade', trade.target)
-        Trades[tradeId] = nil
+        returnEscrow(trade, 'trade distance return')
         return
     end
 
@@ -532,6 +613,7 @@ RegisterNetEvent('rsg-inventory:server:confirmTrade', function(tradeId)
             initiatorAccepted = false,
             targetAccepted = false
         }
+        addCapacity(trade, failedTradeData)
         TriggerClientEvent('rsg-inventory:client:updateTrade', trade.initiator, failedTradeData)
         TriggerClientEvent('rsg-inventory:client:updateTrade', trade.target, failedTradeData)
 		
@@ -542,139 +624,79 @@ RegisterNetEvent('rsg-inventory:server:confirmTrade', function(tradeId)
 
 end)
 
+-- Возвращает временно изъятые предложения владельцам при отмене или выходе.
+-- Удаляет из escrow только успешно возвращённые записи, чтобы повторная попытка не задваивала их.
+returnEscrow = function(trade, reason)
+    trade.executing = true
+    local complete = true
+    for _, side in ipairs({'initiator', 'target'}) do
+        for slot, item in pairs(trade[side .. 'Items']) do
+            if ownsTrade(trade, trade[side]) and returnTradeItemToOwner(trade[side], item, reason) then trade[side .. 'Items'][slot] = nil
+            else complete = false end
+        end
+    end
+    trade.executing = false
+    if complete then
+        TriggerClientEvent('rsg-inventory:client:cancelTrade', trade.initiator)
+        TriggerClientEvent('rsg-inventory:client:cancelTrade', trade.target)
+        Trades[trade.id] = nil
+    else
+        trade.initiatorAccepted, trade.targetAccepted = false, false
+        publishTrade(trade)
+    end
+    return complete
+end
+
 RegisterNetEvent('rsg-inventory:server:cancelTrade', function(tradeId)
     local src = source
     if isOnCooldown(src) then return end
-
     local trade = Trades[tradeId]
-    if not trade then return end
-    if trade.initiator ~= src and trade.target ~= src then return end
-	
-	local otherPlayer = (trade.initiator == src) and trade.target or trade.initiator
-
-    -- Return escrowed items
-    for _, item in pairs(trade.initiatorItems) do
-        returnTradeItemToOwner(trade.initiator, item, 'trade cancel return')
-    end
-    for _, item in pairs(trade.targetItems) do
-        returnTradeItemToOwner(trade.target, item, 'trade cancel return')
-    end
-
-    TriggerClientEvent('rsg-inventory:client:cancelTrade', trade.initiator)
-    TriggerClientEvent('rsg-inventory:client:cancelTrade', trade.target)
-    
-	TriggerClientEvent('ox_lib:notify', src, { title = locale('ui.trade'), description = locale('info.trade_cancelled'), type = 'info', duration = 5000 })
-	TriggerClientEvent('ox_lib:notify', otherPlayer, { title = locale('ui.trade'), description = locale('info.trade_cancelled'), type = 'info', duration = 5000 })
-    
-	Trades[tradeId] = nil
+    if not trade or trade.executing or not ownsTrade(trade, src) then return end
+    returnEscrow(trade, 'trade cancel return')
 end)
 
+-- Повторно проверяет вместимость перед обменом и применяет оба готовых плана.
+-- Нет промежуточной частичной выдачи: при отказе предложения остаются в escrow.
+-- После успешного применения очищает трейд и обновляет состояния, интерфейс и горячие слоты.
 function Inventory.ExecuteTrade(trade)
-    local initiatorPlayer = RSGCore.Functions.GetPlayer(trade.initiator)
-    local targetPlayer = RSGCore.Functions.GetPlayer(trade.target)
-
-    if not initiatorPlayer or not targetPlayer then
-        -- Items are in escrow, return them safely
-        for _, item in pairs(trade.initiatorItems) do
-            returnTradeItemToOwner(trade.initiator, item, 'trade rollback')
-        end
-        for _, item in pairs(trade.targetItems) do
-            returnTradeItemToOwner(trade.target, item, 'trade rollback')
-        end
-        Trades[trade.id] = nil
-        return false, 'player not found'
+    local firstPlayer = RSGCore.Functions.GetPlayer(trade.initiator)
+    local secondPlayer = RSGCore.Functions.GetPlayer(trade.target)
+    if not firstPlayer or not secondPlayer then trade.executing = false; return false, 'player not found' end
+    local capacity, firstPlan, secondPlan = Inventory.GetTradeCapacity(trade)
+    if not firstPlan or not secondPlan then
+        trade.executing = false
+        -- Предложения остаются в escrow: ни один инвентарь назначения ещё не изменён.
+        return false, 'inventory full'
     end
-
-    -- Items are already in escrow (removed from source inventories).
-    -- Track successful transfers for clean rollback on failure.
-    local transferred = {}
-
-    -- Phase 1: Transfer initiator's items to target
-    for _, tradeItem in pairs(trade.initiatorItems) do
-        if Inventory.AddItem(trade.target, tradeItem.name, tradeItem.amount, false, tradeItem.info, ('trade from %s'):format(trade.initiator)) then
-            transferred[#transferred+1] = { name = tradeItem.name, amount = tradeItem.amount, info = tradeItem.info, fromId = trade.initiator, toId = trade.target }
-        else
-            -- Rollback: undo all transfers, return all escrowed items to original owners
-            for _, t in ipairs(transferred) do
-                Inventory.RemoveItem(t.toId, t.name, t.amount, false, 'trade rollback', true)
-                Inventory.AddItem(t.fromId, t.name, t.amount, false, t.info, 'trade rollback')
-            end
-            for _, item in pairs(trade.initiatorItems) do
-                returnTradeItemToOwner(trade.initiator, item, 'trade rollback')
-            end
-            for _, item in pairs(trade.targetItems) do
-                returnTradeItemToOwner(trade.target, item, 'trade rollback')
-            end
-            Trades[trade.id] = nil
-            return false, tradeItem.name
+    -- Оба плана проверены; между применениями нет ожиданий нативов или callback.
+    firstPlayer.PlayerData.items, secondPlayer.PlayerData.items = firstPlan, secondPlan
+    Inventory.SetInventory(trade.initiator, firstPlan)
+    Inventory.SetInventory(trade.target, secondPlan)
+    for _, pair in ipairs({{trade.initiator, trade.targetItems}, {trade.target, trade.initiatorItems}}) do
+        for _, item in pairs(pair[2]) do
+            Inventory.NotifyItemChanged(pair[1], item.name, {action = 'add', amount = item.amount, reason = 'trade'})
         end
+        TriggerEvent('rsg-inventory:server:updateHotbar', pair[1])
     end
-
-    -- Phase 2: Transfer target's items to initiator
-    for _, tradeItem in pairs(trade.targetItems) do
-        if Inventory.AddItem(trade.initiator, tradeItem.name, tradeItem.amount, false, tradeItem.info, ('trade from %s'):format(trade.target)) then
-            transferred[#transferred+1] = { name = tradeItem.name, amount = tradeItem.amount, info = tradeItem.info, fromId = trade.target, toId = trade.initiator }
-        else
-            -- Rollback: undo ALL transfers (including phase 1), return all escrowed items
-            for _, t in ipairs(transferred) do
-                Inventory.RemoveItem(t.toId, t.name, t.amount, false, 'trade rollback', true)
-                Inventory.AddItem(t.fromId, t.name, t.amount, false, t.info, 'trade rollback')
-            end
-            for _, item in pairs(trade.initiatorItems) do
-                returnTradeItemToOwner(trade.initiator, item, 'trade rollback')
-            end
-            for _, item in pairs(trade.targetItems) do
-                returnTradeItemToOwner(trade.target, item, 'trade rollback')
-            end
-            Trades[trade.id] = nil
-            return false, tradeItem.name
-        end
-    end
-
-    local msgItems1, msgItems2 = {}, {}
-    for _, item in pairs(trade.initiatorItems) do msgItems1[#msgItems1+1] = item.name .. ' x' .. item.amount end
-    for _, item in pairs(trade.targetItems) do msgItems2[#msgItems2+1] = item.name .. ' x' .. item.amount end
     TriggerEvent('rsg-log:server:CreateLog', 'playerinventory', 'Trade Completed', 'green',
-        ('**%s (%s)** gave: %s\n**%s (%s)** gave: %s')
-            :format(getCharName(trade.initiator), trade.initiator, table.concat(msgItems1, ', '),
-                    getCharName(trade.target), trade.target, table.concat(msgItems2, ', ')))
-
+        ('Trade %s between %s and %s completed'):format(trade.id, trade.initiator, trade.target))
     Trades[trade.id] = nil
     return true
 end
 
 AddEventHandler('playerDropped', function()
     local src = source
-
-    for id, trade in pairs(Trades) do
-        if trade.executing then
-            -- ExecuteTrade is in progress and has its own rollback.
-            -- Notify the other player; ExecuteTrade will clean up the trade.
-            local other = trade.initiator == src and trade.target or trade.initiator
-            TriggerClientEvent('rsg-inventory:client:cancelTrade', other)
-        elseif trade.initiator == src or trade.target == src then
-            -- Return escrowed items to the disconnecting player
-            if trade.initiator == src then
-                for _, item in pairs(trade.initiatorItems) do
-                    returnTradeItemToOwner(src, item, 'trade disconnect return')
-                end
-            end
-            if trade.target == src then
-                for _, item in pairs(trade.targetItems) do
-                    returnTradeItemToOwner(src, item, 'trade disconnect return')
-                end
-            end
-
-            TriggerClientEvent('rsg-inventory:client:cancelTrade', trade.initiator)
-            TriggerClientEvent('rsg-inventory:client:cancelTrade', trade.target)
-            Trades[id] = nil
+    for _, trade in pairs(Trades) do
+        if (trade.initiator == src or trade.target == src) and not trade.executing then
+            returnEscrow(trade, 'trade disconnect return')
         end
     end
-    for initiatorId, targetId in pairs(pendingRequests) do
-        if initiatorId == src or targetId == src then
+    for initiatorId, request in pairs(pendingRequests) do
+        if initiatorId == src or request.targetId == src then
             TriggerClientEvent('rsg-inventory:client:tradeRequestCancelled', initiatorId)
-            TriggerClientEvent('rsg-inventory:client:tradeRequestCancelled', targetId)
+            TriggerClientEvent('rsg-inventory:client:tradeRequestCancelled', request.targetId)
             pendingRequests[initiatorId] = nil
         end
     end
+    tradeCooldowns[src] = nil
 end)

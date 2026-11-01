@@ -1,5 +1,9 @@
 {
   "error": {
+        "trade_recipient_full": "Recipient inventory full",
+        "trade_your_full": "Your inventory full",
+        "recipient_inventory_full": "The recipient inventory is full. Transfer cancelled.",
+        "your_inventory_full": "Your inventory is full. The items could not be received.",
     "error_already_holding_bag": "Je draagt al een tas, leg deze eerst weg",
     "error_gun_and_bag": "Je kunt geen geweer en een tas tegelijk vasthouden",
     "error": "Foutmelding",

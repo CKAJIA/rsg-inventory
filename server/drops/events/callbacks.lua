@@ -1,14 +1,24 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
--- Callback to get all current item drops
+-- Возвращает клиенту актуальные сумки в мире.
 lib.callback.register('rsg-inventory:server:GetCurrentDrops', function(source)
-    return Drops -- return the table containing all active drops
+    return Drops -- Все активные сумки.
 end)
 
--- Shared function to create drops (eliminates code duplication)
-local function CreateItemDrop(coords, itemData, shouldRemoveFromInventory, source)
+-- Общее создание сумок для ручного выброса и выдачи наград.
+-- Создаёт объект и проверяет сетевой ID до списания ручного выброса.
+-- Ручной выброс берёт настоящий предмет и info из серверного слота.
+-- preparedItems используется только внутренней выдачей награды для нескольких unique-предметов.
+local function CreateItemDrop(coords, itemData, shouldRemoveFromInventory, source, preparedItems)
     local config = require 'shared.config'
+    if type(itemData) ~= 'table' or type(itemData.name) ~= 'string' then return false end
+    local amount = Inventory.ValidAmount(itemData.amount)
+    if not amount then return false end
+    itemData = Inventory.CopyItemData(itemData)
+    itemData.amount = amount
+    if shouldRemoveFromInventory and not Inventory.ValidAmount(itemData.fromSlot) then return false end
 
-    -- Create the bag entity first (before removing from inventory)
+
+    -- Сначала создаём объект; до подтверждения предмет остаётся у игрока.
     local bag = CreateObjectNoOffset(
         config.ItemDropObject,
         coords.x + 0.5,
@@ -17,7 +27,7 @@ local function CreateItemDrop(coords, itemData, shouldRemoveFromInventory, sourc
         true, true, false
     )
 
-    -- Wait for entity to spawn with timeout
+    -- Ожидание появления объекта ограничено по времени.
     local timeout = 100
     while not DoesEntityExist(bag) and timeout > 0 do
         Wait(50)
@@ -26,22 +36,25 @@ local function CreateItemDrop(coords, itemData, shouldRemoveFromInventory, sourc
 
     if not DoesEntityExist(bag) then return false end
 
-    -- Remove item from inventory only after confirming the drop entity exists
+    local networkId = NetworkGetNetworkIdFromEntity(bag)
+    if not networkId or networkId == 0 or Drops[Helpers.CreateDropId(networkId)] then
+        DeleteEntity(bag)
+        return false
+    end
+
+    -- Списываем только после появления объекта и проверки его сетевого ID.
     if shouldRemoveFromInventory and source then
-        -- Fetch the real item server-side by slot (don't trust client metadata)
+        -- Получаем настоящий серверный предмет по слоту, не доверяя метаданным клиента.
         local realItem = Inventory.GetItemBySlot(source, itemData.fromSlot)
         if not realItem or realItem.name:lower() ~= itemData.name:lower() or realItem.amount < itemData.amount then
             DeleteEntity(bag)
             return false
         end
 
-        -- Use server-side item data for the drop payload
-        itemData.name   = realItem.name
-        itemData.amount = itemData.amount
-        itemData.info   = realItem.info or {}
-        itemData.type   = realItem.type
-        itemData.label  = realItem.label
-        itemData.weight = realItem.weight
+        -- Все свойства и info копируются из настоящего серверного стака.
+        local requestedAmount, fromSlot = itemData.amount, itemData.fromSlot
+        itemData = Inventory.CopyItemData(realItem)
+        itemData.amount, itemData.fromSlot, itemData.slot = requestedAmount, fromSlot, 1
 
         local isMove = realItem.type == 'weapon'
         if isMove then
@@ -53,19 +66,18 @@ local function CreateItemDrop(coords, itemData, shouldRemoveFromInventory, sourc
             return false
         end
 
-        -- Play pickup animation
-        local playerPed = GetPlayerPed(source)
-        TaskPlayAnim(playerPed, 'pickup_object', 'pickup_low', 8.0, -8.0, 2000, 0, 0, false, false, false)
+        -- Анимацию запускает клиент после подтверждения. Серверный TaskPlayAnim здесь
+        -- вызывал RPC-ошибку уже после списания и до регистрации содержимого сумки.
+        -- Между успешным списанием и записью Drops не выполняем косметических нативов.
     end
 
-    -- Get network ID and create drop ID
-    local networkId = NetworkGetNetworkIdFromEntity(bag)
+    -- Создаём идентификатор сумки из уже проверенного сетевого ID.
     local newDropId = Helpers.CreateDropId(networkId)
 
-    -- Create itemsTable
-    local itemsTable = { itemData }
+    -- Внутренняя награда может содержать несколько заранее подготовленных unique-предметов.
+    local itemsTable = not shouldRemoveFromInventory and preparedItems or { itemData }
 
-    -- Create or update drop
+    -- Регистрируем содержимое сумки в серверной таблице Drops.
     if not Drops[newDropId] then
         Drops[newDropId] = {
             name = newDropId,
@@ -79,10 +91,10 @@ local function CreateItemDrop(coords, itemData, shouldRemoveFromInventory, sourc
             isOpen = false
         }
 
-        -- Setup client target
+        -- Создаём взаимодействие с сумкой у клиентов.
         TriggerClientEvent('rsg-inventory:client:setupDropTarget', -1, networkId)
     else
-        -- Add to existing drop
+        -- Дополнение уже зарегистрированной сумки.
         table.insert(Drops[newDropId].items, itemData)
     end
 
@@ -91,15 +103,15 @@ end
 
 Helpers.CreateItemDrop = CreateItemDrop
 
--- Rate limiting for drop creation
+-- Ограничение частоты ручного создания сумок.
 local dropCooldowns = {}
 
--- Callback to create a new item drop
+-- Ручной выброс: количество и исходный слот дополнительно проверяются сервером.
 lib.callback.register('rsg-inventory:server:createDrop', function(source, item)
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return false end
 
-    -- Rate limit
+    -- Проверяем задержку между запросами.
     local now = os.time()
     if dropCooldowns[source] and now - dropCooldowns[source] < 1 then return false end
     dropCooldowns[source] = now
@@ -107,6 +119,6 @@ lib.callback.register('rsg-inventory:server:createDrop', function(source, item)
     local playerPed = GetPlayerPed(source)
     local playerCoords = GetEntityCoords(playerPed)
 
-    -- Use shared drop creation function
+    -- Используем общий путь создания и проверки сумки.
     return CreateItemDrop(playerCoords, item, true, source)
 end)

@@ -1,4 +1,8 @@
 return {
+    -- Обычные награды при переполнении выдаются в сумку на землю.
+    -- Передачи, покупки и операции трейда используют строгую выдачу.
+    AutoDropOnFull = true,
+
     -- Whether to use targeting system (e.g., for interaction)
     UseTarget = GetConvar('UseTarget', 'false') == 'true',
 	

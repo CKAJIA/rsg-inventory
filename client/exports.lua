@@ -63,13 +63,14 @@ end
 exports('HasItem', HasItem)
 --]]
 
---- Checks local player inventory.
---- @param items string|table
---- @param amount number|nil Required amount for string or every array item
---- @param anyItem boolean|nil True = enough to have any one item from array/map
+--- Проверяет локальный инвентарь по автоматическому кешу сумм всех стаков.
+--- @param items string|table Имя, список имён или требования { bread = 2 }.
+--- @param amount number|nil Минимум для строки или каждого имени в списке.
+--- @param anyItem boolean|nil true: достаточно любого требования; иначе нужны все.
 --- @return boolean
 function HasItem(items, amount, anyItem)
-    local playerData = RSGCore.Functions.GetPlayerData()
+    -- Используем тот же локальный снимок, что CanAddItem: без копирования PlayerData из ядра.
+    local playerData = GetInventoryPlayerData()
     local inventory = playerData and playerData.items
 
     if not inventory then
@@ -98,16 +99,7 @@ function HasItem(items, amount, anyItem)
         return count == #tbl
     end
 
-    -- Строим временный индекс количества по имени.
-    -- Клиент не хранит PlayerData.itemsByName, поэтому собираем только sums.
-    local amountsByName = {}
-
-    for _, item in pairs(inventory) do
-        if item and item.name then
-            local name = item.name:lower()
-            amountsByName[name] = (amountsByName[name] or 0) + (tonumber(item.amount) or 0)
-        end
-    end
+    local amountsByName = GetInventoryItemAmounts()
 
     local function hasAmount(itemName, requiredAmount)
         local name = tostring(itemName):lower()

@@ -1,7 +1,16 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
 --- Thread to handle player dropping a loot bag using a prompt.
 --- This continuously checks if the player is holding a bag and handles placing it on the ground.
-CreateThread(function()
+-- Промпт и игровой цикл не создаются на экране входа.
+local activePrompt
+InventorySession.OnStop(function()
+    if activePrompt then
+        local deletePrompt = UiPromptDelete or PromptDelete
+        if deletePrompt then deletePrompt(activePrompt) end
+        activePrompt = nil
+    end
+end)
+InventorySession.OnStart(function(session)
     ---@type number Scenario hash for the crouch pickup animation
     local scenarioHash       = GetHashKey("RANSACK_FALLBACK_PICKUP_CROUCH")
     ---@type number Conditional animation hash
@@ -16,6 +25,7 @@ CreateThread(function()
     --- Register a UI prompt for dropping the bag
     ---@type number prompt handle
     local dropBagPrompt = UiPromptRegisterBegin()
+    activePrompt = dropBagPrompt
     PromptSetControlAction(dropBagPrompt, RSGCore.Shared.Keybinds['G']) --- Keybind G to drop bag
     PromptSetText(dropBagPrompt, dropBagPromptTitle)
     PromptSetEnabled(dropBagPrompt, true)
@@ -25,7 +35,7 @@ CreateThread(function()
     PromptRegisterEnd(dropBagPrompt)
 
     --- Main loop
-    while true do
+    while InventorySession.IsCurrent(session) do
         if LocalPlayer.state.holdingDrop then
             --- Activate the prompt group each frame
             PromptSetActiveGroupThisFrame(dropPromptGroup, dropGroupTitle)
@@ -38,6 +48,8 @@ CreateThread(function()
                     ClearPedTasksImmediately(cache.ped)
                     TaskStartScenarioInPlaceHash(cache.ped, scenarioHash, 0, true, conditionalHash, -1.0, false)
                     Wait(1000)
+                    -- Во время анимации персонаж мог выйти: старую сумку больше не трогаем.
+                    if not InventorySession.IsCurrent(session) then return end
 
                     --- Detach bag from player and compute drop coordinates
                     DetachEntity(bagObject, true, true)
@@ -57,6 +69,7 @@ CreateThread(function()
 
                     --- Update the server with the new drop location
                     local success = lib.callback.await('rsg-inventory:updateDrop', false, LocalPlayer.state.heldDrop, dropCoords)
+                    if not InventorySession.IsCurrent(session) then return end
                     if not success then
                         lib.notify({
                             title       = locale('error.Error'),

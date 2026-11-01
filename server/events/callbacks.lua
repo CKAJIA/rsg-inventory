@@ -10,71 +10,49 @@ lib.callback.register('rsg-inventory:server:getPlayerName', function(source, tar
     return GetPlayerName(targetId)
 end)
 
--- Register a server callback for giving an item from one player to another
-lib.callback.register('rsg-inventory:server:giveItem', function(source, target, item, amount, slot, info)
-    -- Get the player object for the source (the giver)
-    local player = RSGCore.Functions.GetPlayer(source)
-    -- Check if the source player exists and is not dead, in last stand, or handcuffed
-    if not player or player.PlayerData.metadata.isdead or player.PlayerData.metadata.inlaststand or player.PlayerData.metadata.ishandcuffed then
-        return false
+-- Обычная передача: сначала строим планы обоих инвентарей, затем применяем вместе.
+-- Если получатель заполнен, отправитель сохраняет предмет и оба видят уведомление.
+-- Предмет и его info берутся из серверного слота, а не из присланных клиентом метаданных.
+lib.callback.register('rsg-inventory:server:giveItem', function(source, target, item, amount, slot)
+    target, amount, slot = Inventory.ValidAmount(target), Inventory.ValidAmount(amount), Inventory.ValidAmount(slot)
+    if not target or target == source or not amount or not slot or type(item) ~= 'string' then return false end
+    item = item:lower()
+    local player, recipient = RSGCore.Functions.GetPlayer(source), RSGCore.Functions.GetPlayer(target)
+    if not player or not recipient then return false end
+    for _, current in ipairs({player, recipient}) do
+        local meta = current.PlayerData.metadata
+        if meta.isdead or meta.inlaststand or meta.ishandcuffed then return false end
     end
-
-    -- Get the player object for the target (the receiver)
-    local Target = RSGCore.Functions.GetPlayer(target)
-    -- Check if the target player exists and is not dead, in last stand, or handcuffed
-    if not Target or Target.PlayerData.metadata.isdead or Target.PlayerData.metadata.inlaststand or Target.PlayerData.metadata.ishandcuffed then
-        return false
-    end
-
-    -- Check if the distance between source and target is within 5 units
-    if #(GetEntityCoords(GetPlayerPed(source)) - GetEntityCoords(GetPlayerPed(target))) > Inventory.MAX_DIST then
-        return false
-    end
-
-    -- Get item information from the shared items list
-    local itemInfo = RSGCore.Shared.Items[item:lower()]
-    if not itemInfo then
-        return false
-    end
-
-    -- Fetch the real item from the source's inventory by slot (don't trust client-sent info/metadata)
+    if #(GetEntityCoords(GetPlayerPed(source)) - GetEntityCoords(GetPlayerPed(target))) > Inventory.MAX_DIST then return false end
+    local definition = RSGCore.Shared.Items[item]
     local invItem = Inventory.GetItemBySlot(source, slot)
-    if not invItem or invItem.name:lower() ~= item:lower() or invItem.amount <= 0 or tonumber(amount) > invItem.amount then
-        return false
+    if not definition or not invItem or invItem.name:lower() ~= item or invItem.amount < amount then return false end
+    local info = Inventory.CopyItemData(invItem.info or {})
+    Inventory.CheckPlayerItemsDecay(recipient)
+    local sourcePlan = Inventory.PlanRemoveItem(player.PlayerData.items, item, amount, slot)
+    if not sourcePlan then return false end
+    local targetPlan, reason = Inventory.PlanAddItem(recipient.PlayerData.items, recipient.PlayerData.weight,
+        recipient.PlayerData.slots, item, amount, false, info)
+    if not targetPlan then Inventory.NotifyTransferFull(source, target, reason); return false end
+    -- Применяем оба плана до вызова подписчиков, чтобы они видели согласованные остатки.
+    player.PlayerData.items, recipient.PlayerData.items = sourcePlan, targetPlan
+    Inventory.SetInventory(source, sourcePlan)
+    Inventory.SetInventory(target, targetPlan)
+    local isWeapon = definition.type == 'weapon'
+    if isWeapon then
+        Inventory.CheckWeapon(source, item)
+        TriggerClientEvent('rsg-core:client:RemoveWeaponFromTab', source, item)
     end
-
-    -- Use server-side item info (prevents serial/quality forgery)
-    local serverInfo = invItem.info or {}
-
-    -- Initialize a flag to track if the item is a weapon
-    local isMove = false
-    if itemInfo.type == 'weapon' then
-        isMove = true
-        Inventory.CheckWeapon(source, item) -- Check or remove the weapon from the source
-    end
-
-    -- Remove from source first, then add to target (prevents duplication)
-    if not Inventory.RemoveItem(source, item, amount, slot, ('Item given to ID #%s'):format(target), isMove) then
-        return false
-    end
-
-    if not Inventory.AddItem(target, item, amount, false, serverInfo, ('Item given from ID #%s'):format(source)) then
-        -- Rollback: give item back to source if add to target fails
-        Inventory.AddItem(source, item, amount, false, serverInfo, 'rollback give item')
-        return false
-    end
-
-    -- Trigger give animation for both players
+    Inventory.NotifyItemChanged(source, item, {action = 'remove', amount = amount, slot = slot, reason = 'give item', info = info})
+    Inventory.NotifyItemChanged(target, item, {action = 'add', amount = amount, reason = 'give item', info = info})
+    TriggerEvent('rsg-inventory:server:itemRemovedFromPlayerInventory', source, item,
+        {amount = amount, slot = slot, info = info}, 'give item', isWeapon)
+    TriggerEvent('rsg-inventory:server:updateHotbar', source)
+    TriggerEvent('rsg-inventory:server:updateHotbar', target)
     TriggerClientEvent('rsg-inventory:client:giveAnim', source)
-    TriggerClientEvent('rsg-inventory:client:ItemBox', source, itemInfo, 'remove', amount)
+    TriggerClientEvent('rsg-inventory:client:ItemBox', source, definition, 'remove', amount)
     TriggerClientEvent('rsg-inventory:client:giveAnim', target)
-    TriggerClientEvent('rsg-inventory:client:ItemBox', target, itemInfo, 'add', amount)
-
-    -- Update the target's inventory if they are marked as busy
-    if Player(target).state.inv_busy then
-        TriggerClientEvent('rsg-inventory:client:updateInventory', target)
-    end
-
-    -- Return true to indicate success
+    TriggerClientEvent('rsg-inventory:client:ItemBox', target, definition, 'add', amount)
+    if Player(target).state.inv_busy then TriggerClientEvent('rsg-inventory:client:updateInventory', target) end
     return true
 end)

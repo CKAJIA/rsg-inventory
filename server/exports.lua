@@ -1,10 +1,15 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
 Inventory = Inventory or {}
 local config = require 'shared.config'
+-- Загружает сохранённые предметы и создаёт индекс, в том числе для пустого инвентаря.
 Inventory.LoadInventory = function(source, citizenid)
     local inventory = MySQL.prepare.await('SELECT inventory FROM players WHERE citizenid = ?', { citizenid })
     inventory = json.decode(inventory)
-    if not inventory or not next(inventory) then return {} end
+    if not inventory or not next(inventory) then
+        local empty = {}
+        Inventory.BuildNameIndex(source, empty)
+        return empty
+    end
 
     local loadedInventory = {}
     local missingItems = {}
@@ -84,14 +89,16 @@ end
 
 exports('SaveInventory', Inventory.SaveInventory)
 
---- Sets the inventory of a player.
---- @param source number The player's server ID.
---- @param items table The items to set in the player's inventory.
+--- Заменяет содержимое инвентаря игрока.
+--- @param source number
+--- @param items table
+-- Заменяет все items, пересобирает индекс и оповещает состояния и подписчиков.
+-- Используйте этот API для массовых изменений вместо прямого редактирования PlayerData.items.
 Inventory.SetInventory = function(source, items)
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return end
 
-	-- items уже применён к PlayerData, теперь создаём новый индекс
+	-- Строим индекс переданной таблицы перед синхронизацией PlayerData.
 	Inventory.BuildNameIndex(source, items)
 	---------------------------------------------------------------
     Player.Functions.SetPlayerData('items', items)
@@ -100,9 +107,7 @@ Inventory.SetInventory = function(source, items)
 		Inventory.ItemStates.OnInventoryChanged(source)
 	end
 	
-	Inventory.NotifyInventoryChanged(source, {
-		action = 'set'
-	})
+	Inventory.NotifyInventoryChanged(source, {action = 'set'})
 
     if not Player.Offline then
         local logMessage = string.format('**%s (citizenid: %s | id: %s)** items set: %s', GetPlayerName(source), Player.PlayerData.citizenid, source, json.encode(items))
@@ -112,15 +117,17 @@ end
 
 exports('SetInventory', Inventory.SetInventory)
 
--- Sets the value of a specific key in the data of an item for a player.
---- @param source number The player's server ID.
---- @param itemName string The name of the item.
---- @param key string The key to set the value for.
---- @param val any The value to set for the key.
---- @return boolean|nil - Returns true if the value was set successfully, false otherwise.
+-- Меняет значение поля предмета игрока.
+--- @param source number
+--- @param itemName string
+--- @param key string
+--- @param val any
+--- @return boolean|nil
+-- Меняет поле первого найденного предмета и синхронизирует индекс.
+-- Поля name и slot запрещены: они меняют структуру индекса. Для метаданных передайте key = info.
 Inventory.SetItemData = function(source, itemName, key, val)
     if not itemName or not key then return false end
-    if key == 'name' then return false end
+    if key == 'name' or key == 'slot' then return false end
 
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return false end
@@ -141,9 +148,9 @@ end
 
 exports('SetItemData', Inventory.SetItemData)
 
---- Retrieves the weight of an item from the shared item configuration.
---- @param itemName string - The name of the item to retrieve the weight for.
---- @return number|nil - The weight of the item, or nil if the item doesn't exist.
+--- Возвращает вес единицы предмета из общего описания.
+--- @param itemName string
+--- @return number|nil
 Inventory.GetItemWeight = function(itemName)
     itemName = itemName:lower()
     local itemInfo = RSGCore.Shared.Items[itemName]
@@ -165,10 +172,10 @@ end
 
 exports('UseItem', Inventory.UseItem)
 
--- Retrieves the slots in the items table that contain a specific item.
---- @param items table The table containing the items.
---- @param itemName string The name of the item to search for.
---- @return table A table containing the slots where the item was found.
+-- Возвращает слоты указанного имени из переданной таблицы.
+--- @param items table
+--- @param itemName string
+--- @return table
 Inventory.GetSlotsByItem = function(items, itemName)
     local slotsFound = {}
     if not items then return slotsFound end
@@ -182,10 +189,10 @@ end
 
 exports('GetSlotsByItem', Inventory.GetSlotsByItem)
 
--- Retrieves the first slot number that contains an item with the specified name.
---- @param items table The table of items to search through.
---- @param itemName string The name of the item to search for.
---- @return number|nil - The slot number of the first matching item, or nil if no match is found.
+-- Возвращает первый найденный слот указанного имени.
+--- @param items table
+--- @param itemName string
+--- @return number|nil
 Inventory.GetFirstSlotByItem = function(items, itemName)
     if not items then return end
     for slot, item in pairs(items) do
@@ -198,10 +205,10 @@ end
 
 exports('GetFirstSlotByItem', Inventory.GetFirstSlotByItem)
 
---- Retrieves an item from a player's inventory based on the specified slot.
---- @param source number The player's server ID.
---- @param slot number The slot number of the item.
---- @return table|nil - item data if found, or nil if not found.
+--- Возвращает предмет игрока из указанного слота.
+--- @param source number
+--- @param slot number
+--- @return table|nil
 Inventory.GetItemBySlot = function(source, slot)
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return end
@@ -212,8 +219,12 @@ end
 
 exports('GetItemBySlot', Inventory.GetItemBySlot)
 
+-- Для известной таблицы игрока читает готовый вес из индекса.
+-- Для произвольного контейнера вычисляет вес проходом по его предметам.
 Inventory.GetTotalWeight = function(items)
     if not items then return 0 end
+    local cached = Inventory.IndexByItems and Inventory.IndexByItems[items]
+    if cached then return cached.weight end
     local weight = 0
     for _, item in pairs(items) do
         weight = weight + (item.weight * item.amount)
@@ -223,10 +234,10 @@ end
 
 exports('GetTotalWeight', Inventory.GetTotalWeight)
 
--- Retrieves an item from a player's inventory by its name.
---- @param source number - The player's server ID.
---- @param item string - The name of the item to retrieve.
---- @return table|nil - item data if found, nil otherwise.
+-- Возвращает первый предмет игрока по имени.
+--- @param source number
+--- @param item string
+--- @return table|nil
 --[[
 Inventory.GetItemByName = function(source, item)
     local Player = RSGCore.Functions.GetPlayer(source)
@@ -236,10 +247,12 @@ Inventory.GetItemByName = function(source, item)
     return items[slot]
 end
 --]]
+-- Находит первый слот по имени через индекс; перед возвратом учитывает порчу предметов.
 Inventory.GetItemByName = function(source, item)
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return end
 
+    Inventory.CheckPlayerItemsDecay(Player)
     local index = Inventory.GetNameIndex(source)
     if not index then        
         index = Inventory.BuildNameIndex(source, Player.PlayerData.items)
@@ -248,26 +261,17 @@ Inventory.GetItemByName = function(source, item)
     local indexedItems = index and index[tostring(item):lower()]
     if not indexedItems then return end
 
-    local firstSlot, firstItem
-
-    for slot, itemData in pairs(indexedItems) do
-        slot = tonumber(slot)
-        if itemData and slot and (not firstSlot or slot < firstSlot) then
-            firstSlot = slot
-            firstItem = itemData
-        end
-    end
-
-    return firstItem
+    local totals = Inventory.GetPlayerIndex(source)
+    return totals and indexedItems[totals.firstSlots[tostring(item):lower()]]
 end
 
 
 exports('GetItemByName', Inventory.GetItemByName)
 
--- Retrieves a list of items with a specific name from a player's inventory.
---- @param source number The player's server ID.
---- @param item string The name of the item to search for.
---- @return table|nil - containing the items with the specified name.
+-- Возвращает список стаков игрока по имени.
+--- @param source number
+--- @param item string
+--- @return table|nil
 --[[
 Inventory.GetItemsByName = function(source, item)
     local Player = RSGCore.Functions.GetPlayer(source)
@@ -283,10 +287,12 @@ Inventory.GetItemsByName = function(source, item)
     return items
 end
 --]]
+-- Собирает результат только из стаков нужного имени, без перебора остального инвентаря.
 Inventory.GetItemsByName = function(source, item)
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return end
 
+    Inventory.CheckPlayerItemsDecay(Player)
     local index = Inventory.GetNameIndex(source)
     if not index then
         index = Inventory.BuildNameIndex(source, Player.PlayerData.items)
@@ -306,153 +312,106 @@ end
 
 exports('GetItemsByName', Inventory.GetItemsByName)
 
---- Retrieves the total count of used and free slots for a player or an inventory.
---- @param identifier number|string The player's identifier or the identifier of an inventory or drop.
+--- Возвращает число занятых и свободных слотов.
+--- @param identifier number|string
 --- @return number, number - The total count of used slots and the total count of free slots. If no inventory is found, returns 0 and the maximum slots.
+-- Возвращает занятые и свободные слоты: для игрока берёт готовые счётчики.
+-- Слоты сами по себе не показывают вместимость: для выдачи используйте CanAddItem с весом и info.
 Inventory.GetSlots = function(identifier)
-    local inventory, maxSlots
-    local player = RSGCore.Functions.GetPlayer(identifier)
+    local inventory, _, maxSlots, player = Inventory.GetContainerData(identifier)
+    if not inventory then return 0, 0 end
     if player then
-        inventory = player.PlayerData.items
-        maxSlots = player.PlayerData.slots
-    elseif Inventories[identifier] then
-        inventory = Inventories[identifier].items
-        maxSlots = Inventories[identifier].slots
-    elseif Drops[identifier] then
-        inventory = Drops[identifier].items
-        maxSlots = Drops[identifier].slots
+        Inventory.CheckPlayerItemsDecay(player)
+        local index = Inventory.GetPlayerIndex(identifier)
+        return index.usedSlots, math.max(0, maxSlots - index.usedSlots)
     end
-    if not inventory then return 0, maxSlots end
-    local slotsUsed = 0
-    for _, v in pairs(inventory) do
-        if v then
-            slotsUsed = slotsUsed + 1
-        end
-    end
-    local slotsFree = maxSlots - slotsUsed
-    return slotsUsed, slotsFree
+    local used = 0
+    for _ in pairs(inventory) do used = used + 1 end
+    return used, math.max(0, maxSlots - used)
 end
 
 exports('GetSlots', Inventory.GetSlots)
 
---- Retrieves the total count of specified items for a player.
---- @param source number The player's source ID.
---- @param items table|string The items to count. Can be either a table of item names or a single item name.
---- @return number|nil - The total count of the specified items.
+--- Возвращает суммарное количество запрошенных предметов игрока.
+--- @param source number
+--- @param items table|string
+--- @return number|nil
+-- Суммирует количество запрошенного имени или списка имён по готовым счётчикам.
+-- Одно имя не требует регистрации; повторённые в списке имена не удваивают результат.
 Inventory.GetItemCount = function(source, items)
-    local Player = RSGCore.Functions.GetPlayer(source)
-    if not Player then return end
-    Inventory.CheckPlayerItemsDecay(Player)
-    local isTable = type(items) == 'table'
-    local itemsSet = isTable and {} or nil
-    if isTable then
-        for _, item in pairs(items) do
-            itemsSet[item] = true
-        end
+    local player = RSGCore.Functions.GetPlayer(source)
+    if not player then return 0 end
+    Inventory.CheckPlayerItemsDecay(player)
+    if type(items) == 'string' then return Inventory.GetIndexedAmount(source, items) end
+    local total, seen = 0, {}
+    for _, name in pairs(type(items) == 'table' and items or {}) do
+        name = tostring(name):lower()
+        if not seen[name] then total = total + Inventory.GetIndexedAmount(source, name); seen[name] = true end
     end
-    local count = 0
-    for _, item in pairs(Player.PlayerData.items) do
-        if (isTable and itemsSet[item.name]) or (not isTable and items == item.name) then
-            count = count + item.amount
-        end
-    end
-    return count
+    return total
 end
 
 exports('GetItemCount', Inventory.GetItemCount)
 
 
 --- Получаем количество предмета по имени быстро из индексированой таблицы 
---- Находит все стаки предметов с этим именем и складывает их и возвращает общее количество
+--- Возвращает сохранённую сумму всех стаков этого имени без повторного сложения.
+-- Быстрый одиночный запрос количества по имени; сумма всех стаков уже хранится в индексе.
 Inventory.GetItemAmountIndex = function(source, itemName)
-    local Player = RSGCore.Functions.GetPlayer(source)
-    if not Player or not Player.PlayerData then
-        return 0
-    end
-
-	--вот этот чек можно и удалить для скорости
-    Inventory.CheckPlayerItemsDecay(Player)
-
-    itemName = tostring(itemName):lower()
-
-    local itemIndex = Inventory.GetNameIndex(source)
-    if not itemIndex then
-        itemIndex = Inventory.BuildNameIndex(source, Player.PlayerData.items or {})
-    end
-
-    local itemStacks = itemIndex and itemIndex[itemName]
-    if not itemStacks then
-        return 0
-    end
-
-    local amount = 0
-    for _, itemData in pairs(itemStacks) do
-        amount = amount + (tonumber(itemData.amount) or 0)
-    end
-
-    return amount
+    local player = RSGCore.Functions.GetPlayer(source)
+    if not player then return 0 end
+    Inventory.CheckPlayerItemsDecay(player)
+    return Inventory.GetIndexedAmount(source, itemName)
 end
 
 exports('GetItemAmountIndex', Inventory.GetItemAmountIndex)
 
 
---- Checks if an item can be added to a player's inventory.
---- @param source number The player's server ID.
---- @param item string The item name.
---- @param amount number The amount of the item.
---- @return boolean - Returns true if the item can be added, false otherwise.
---- @return string|nil - Returns a string indicating the reason why the item cannot be added (e.g., 'weight' or 'slots'), or nil if it can be added.
-Inventory.CanAddItem = function(source, item, amount)
-    local Player = RSGCore.Functions.GetPlayer(source)
-    if Player then
-        local itemData = RSGCore.Shared.Items[item:lower()]
-        if not itemData then return false end
-
-        local weight = itemData.weight * amount
-        local totalWeight = Inventory.GetTotalWeight(Player.PlayerData.items) + weight
-
-        if totalWeight > Player.PlayerData.weight then
-            return false, 'weight'
-        end
-
-        local slotsUsed = 0
-        for _, v in pairs(Player.PlayerData.items) do
-            if v then
-                slotsUsed = slotsUsed + 1
-            end
-        end
-        
-        if slotsUsed >= Player.PlayerData.slots then
-            return false, 'slots'
-        end
-
-        return true
-
-    elseif Inventories[source] then
-        local inventory = Inventories[source].items
-        local inventoryWeight = Inventories[source].maxweight or 250000
-        local itemData = RSGCore.Shared.Items[item:lower()]
-        
-        if not itemData then return false end
-        
-        local weight = itemData.weight * amount
-        local totalWeight = Inventory.GetTotalWeight(inventory) + weight
-        
-        if totalWeight > inventoryWeight then
-            return false, 'weight'
-        end
-
-        return true
-    else
-        return true
+--- Проверяет вместимость без изменения инвентаря.
+--- @param source number
+--- @param item string
+--- @param amount number
+--- @return boolean
+--- @return string|nil
+-- Проверяет строгое размещение в инвентаре без выдачи и без сумки на землю.
+-- Учитывает количество, вес, unique, свободные слоты и точную совместимость info.
+-- Для игрока вес и занятость читаются из кеша; при полном инвентаре проверяются стаки этого имени.
+-- Возвращает true либо false, причину: item, inventory, weight, slots, invalid_amount.
+Inventory.CanAddItem = function(source, item, amount, info)
+    if type(item) ~= 'string' then return false, 'item' end
+    item, amount = item:lower(), Inventory.ValidAmount(amount, 1)
+    local definition = RSGCore.Shared.Items[item]
+    if not definition or not amount then return false, 'item' end
+    local items, maxWeight, maxSlots, player = Inventory.GetContainerData(source)
+    if not items then return false, 'inventory' end
+    if player then Inventory.CheckPlayerItemsDecay(player); items = player.PlayerData.items end
+    local index = player and Inventory.GetPlayerIndex(source)
+    -- Таблица items из GetPlayer может быть копией: вес игрока читаем по source из индекса.
+    local weight = index and index.weight or Inventory.GetTotalWeight(items)
+    if weight + (definition.weight or 0) * amount > maxWeight then return false, 'weight' end
+    local used = index and index.usedSlots or 0
+    if not index then for _ in pairs(items) do used = used + 1 end end
+    local free = maxSlots - used
+    if definition.unique then
+        local prepared = Inventory.PrepareItemInfo(definition, info)
+        if amount > 1 and prepared.serie then return false, 'invalid_amount' end
+        return free >= amount, free < amount and 'slots' or nil
     end
+    if free > 0 then return true end
+    info = Inventory.PrepareItemInfo(definition, info)
+    local candidates = index and index.names[item] or items
+    for _, existing in pairs(candidates or {}) do
+        if Inventory.CanStackItem(existing, item, info) then return true end
+    end
+    return false, 'slots'
 end
 
 exports('CanAddItem', Inventory.CanAddItem)
 
---- Gets the total free weight of the player's inventory.
---- @param source number The player's server ID.
---- @return number - Returns the free weight of the players inventory. Error will return 0
+--- Возвращает свободный вес игрока.
+--- @param source number
+--- @return number
+-- Возвращает остаток веса из индекса игрока после проверки порчи предметов.
 Inventory.GetFreeWeight = function(source)
     if not source then
         warn('Source was not passed into GetFreeWeight')
@@ -461,13 +420,16 @@ Inventory.GetFreeWeight = function(source)
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return 0 end
 
-    local totalWeight = Inventory.GetTotalWeight(Player.PlayerData.items)
+    Inventory.CheckPlayerItemsDecay(Player)
+    -- Не ищем копию таблицы items в слабом индексе: source остаётся стабильным ключом.
+    local totalWeight = Inventory.GetPlayerIndex(source).weight
     local freeWeight = Player.PlayerData.weight - totalWeight
     return freeWeight
 end
 
 exports('GetFreeWeight', Inventory.GetFreeWeight)
 
+-- Очищает инвентарь с возможным фильтром сохранения и пересобирает индекс и состояния.
 Inventory.ClearInventory = function(source, filterItems)
     local player = RSGCore.Functions.GetPlayer(source)
     local savedItemData = {}
@@ -488,9 +450,7 @@ Inventory.ClearInventory = function(source, filterItems)
 	if Inventory.ItemStates then
 		Inventory.ItemStates.OnInventoryChanged(source)
 	end
-	Inventory.NotifyInventoryChanged(source, {
-		action = 'clear'
-	})
+	Inventory.NotifyInventoryChanged(source, {action = 'clear'})
 	
     if not player.Offline then
         local logMessage = string.format('**%s (citizenid: %s | id: %s)** inventory cleared', GetPlayerName(source), player.PlayerData.citizenid, source)
@@ -506,11 +466,11 @@ end
 
 exports('ClearInventory', Inventory.ClearInventory)
 
---- Checks if a player has a certain item or items in their inventory.
---- @param source number The player's server ID.
---- @param items string|table The name of the item or a table of item names.
---- @param amount number (optional) The minimum amount required for each item.
---- @return boolean - Returns true if the player has the item(s) with the specified amount, false otherwise.
+--- Проверяет наличие одного или нескольких предметов.
+--- @param source number
+--- @param items string|table
+--- @param amount number
+--- @return boolean
 --[[
 Inventory.HasItem = function(source, items, amount)
     local Player = RSGCore.Functions.GetPlayer(source)
@@ -536,7 +496,7 @@ Inventory.HasItem = function(source, items, amount)
                     end
                 end
             end
-        else -- Single item as string
+        else -- Одно имя строкой.
             if itemData and itemData.name == items and (not amount or (itemData and amount and itemData.amount >= amount)) then
                 return true
             end
@@ -547,42 +507,20 @@ Inventory.HasItem = function(source, items, amount)
 end
 --]]
 
---- Checks if player has item(s) using itemsByName index.
+--- Проверяет наличие через индекс суммарных количеств.
 --- @param source number
---- @param items string|table
 --- @param amount number|nil
---- @param anyItem boolean|nil When true, any item from array is enough.
 --- @return boolean
+-- Проверяет готовые суммы по всем стакам: строка, список имён или таблица требований.
+-- anyItem = true означает «достаточно одного требования», иначе нужны все.
+-- Регистрация ItemState для обычных HasItem и GetItemCount не требуется.
 Inventory.HasItem = function(source, items, amount, anyItem)
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return false end
-
     Inventory.CheckPlayerItemsDecay(Player)
-
-    local index = Inventory.GetNameIndex(source)
-    if not index then
-        index = Inventory.BuildNameIndex(source, Player.PlayerData.items)
-    end
-
-    if not index then return false end
-
     local function hasAmount(itemName, requiredAmount)
-        local indexedItems = index[tostring(itemName):lower()]
-        if not indexedItems then return false end
-
-        local total = 0
-
-        for _, itemData in pairs(indexedItems) do
-            if itemData and itemData.amount then
-                total = total + itemData.amount
-
-                if total >= requiredAmount then
-                    return true
-                end
-            end
-        end
-
-        return false
+        requiredAmount = tonumber(requiredAmount) or 1
+        return requiredAmount >= 0 and Inventory.GetIndexedAmount(source, itemName) >= requiredAmount
     end
 
     -- Один предмет
@@ -667,10 +605,10 @@ Player.Functions.HasItem({goldbar = 1, moneybag = 5}, nil, true)
 
 exports('HasItem', Inventory.HasItem)
 
--- CloseInventory function closes the inventory for a given source and identifier.
--- It sets the isOpen flag of the inventory identified by the given identifier to false.
--- It also sets the inv_busy flag of the player identified by the given source to false.
--- Finally, it triggers the 'rsg-inventory:client:closeInv' event for the given source.
+-- Закрывает интерфейс игрока и освобождает указанный контейнер.
+-- Снимает флаг isOpen контейнера.
+-- Снимает флаг inv_busy игрока.
+-- Отправляет клиенту событие закрытия.
 Inventory.CloseInventory = function(source, identifier)
     if identifier and Inventories[identifier] then
         Inventories[identifier].isOpen = false
@@ -681,9 +619,9 @@ end
 
 exports('CloseInventory', Inventory.CloseInventory)
 
--- Opens the inventory of a player by their ID.
---- @param source number - The player's server ID.
---- @param targetId number - The ID of the player whose inventory will be opened.
+-- Открывает чужой инвентарь по ID; права должен проверить вызывающий серверный ресурс.
+--- @param source number
+--- @param targetId number
 Inventory.OpenInventoryById = function(source, targetId)
     local RSGPlayer = RSGCore.Functions.GetPlayer(source)
     local TargetPlayer = RSGCore.Functions.GetPlayer(tonumber(targetId))
@@ -709,7 +647,7 @@ end
 
 exports('OpenInventoryById', Inventory.OpenInventoryById)
 
--- Clears a given stash of all items inside
+-- Очищает содержимое существующего хранилища и обновляет его строку БД.
 --- @param identifier string
 Inventory.ClearStash = function(identifier)
     if not identifier then return end
@@ -721,7 +659,7 @@ end
 
 exports('ClearStash', Inventory.ClearStash)
 
--- Save a given stash
+-- Сохраняет содержимое хранилища в БД.
 --- @param identifier string
 Inventory.SaveStash = function(identifier)
     if not identifier then return end
@@ -734,9 +672,9 @@ end
 
 exports("SaveStash", Inventory.SaveStash)
 
---- @param source number The player's server ID.
---- @param identifier string|nil The identifier of the inventory to open.
---- @param data table|nil Additional data for initializing the inventory.
+--- @param source number
+--- @param identifier string|nil
+--- @param data table|nil
 Inventory.OpenInventory = function (source, identifier, data)
     if Player(source).state.inv_busy then return end
     local RSGPlayer = RSGCore.Functions.GetPlayer(source)
@@ -787,38 +725,31 @@ end
 
 exports('OpenInventory', Inventory.OpenInventory)
 
--- Force drop function for when inventory is full (uses shared drop creation)
+-- Выдаёт новую награду в сумку у игрока; не списывает её из его инвентаря.
+-- Сначала готовит все предметы сумки, включая отдельные слоты unique и номера оружия.
+-- Создание сумки считается успехом только после получения сетевого ID.
+-- Возвращает networkId либо false; функция не удаляет предметы из инвентаря игрока.
 Inventory.ForceDropItem = function(source, item, amount, info, reason)
+    amount = Inventory.ValidAmount(amount, 1)
+    if not amount or type(item) ~= 'string' then return false end
+    item = item:lower()
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return false end
 
     local ped = GetPlayerPed(source)
     local coords = GetEntityCoords(ped)
 
-    -- Get item info
+    -- Получаем описание предмета из RSG Core.
     local itemInfo = RSGCore.Shared.Items[item:lower()]
     if not itemInfo then return false end
 
-    -- Create item data
-    local itemData = {
-        name = item,
-        amount = amount,
-        info = info or {},
-        slot = 1,
-        label = itemInfo.label,
-        description = itemInfo.description or '',
-        weight = itemInfo.weight,
-        type = itemInfo.type,
-        unique = itemInfo.unique,
-        useable = itemInfo.useable,
-		squality = itemInfo.squality,
-        image = itemInfo.image,
-        shouldClose = itemInfo.shouldClose,
-        combinable = itemInfo.combinable
-    }
-
-    -- Use the shared drop creation function
-    local networkId = Helpers.CreateItemDrop(coords, itemData, false, nil)
+    -- Подготавливаем награду целиком до создания сумки. Для unique выделяются отдельные
+    -- слоты и номера оружия; если награда не помещается в сумку, частичной выдачи нет.
+    local dropItems = Inventory.PlanAddItem({}, config.DropSize.maxweight, config.DropSize.slots,
+        item, amount, false, info)
+    if not dropItems then return false end
+    local itemData = dropItems[1]
+    local networkId = Helpers.CreateItemDrop(coords, itemData, false, nil, dropItems)
 
     if not networkId then
         TriggerClientEvent('ox_lib:notify', source, {
@@ -830,12 +761,12 @@ Inventory.ForceDropItem = function(source, item, amount, info, reason)
         return false
     end
 
-    -- Log the forced drop
+    -- Записываем выдачу награды в сумку в журнал.
     local logMessage = string.format('**%s (citizenid: %s | id: %s)** item force dropped due to full inventory: %s x%s at %s',
         GetPlayerName(source), Player.PlayerData.citizenid, source, item, amount, coords)
     TriggerEvent('rsg-log:server:CreateLog', 'playerinventory', 'Force Drop', 'orange', logMessage)
 
-    -- Notify the player
+    -- Сообщаем игроку, что награда находится в сумке на земле.
     TriggerClientEvent('ox_lib:notify', source, {
         type = 'warning',
         title = locale('error.inventory_full'),
@@ -848,136 +779,45 @@ end
 
 exports('ForceDropItem', Inventory.ForceDropItem)
 
---- Adds an item to the player's inventory or a specific inventory.
---- @param identifier string The identifier of the player or inventory.
---- @param item string The name of the item to add.
---- @param amount number The amount of the item to add.
---- @param slot number (optional) The slot to add the item to. If not provided, it will find the first available slot.
---- @param info table (optional) Additional information about the item.
---- @param reason string (optional) The reason for adding the item.
---- @return boolean Returns true if the item was successfully added, false otherwise.
-Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
-    amount = tonumber(amount) or 1
-    if amount <= 0 then
-        return false
+--- Выдаёт предмет игроку или в существующий контейнер.
+--- @param identifier string
+--- @param item string
+--- @param amount number
+--- @param slot number
+--- @param info table
+--- @param reason string
+--- @param allowDrop boolean|nil
+--- @return boolean
+--- @return string
+--- @return number|nil
+-- Выдаёт предмет в инвентарь; обычная награда при переполнении может попасть в сумку.
+-- Успех: true, inventory либо true, dropped, networkId. Отказ: false, причина.
+-- Нельзя повторять выдачу/откатывать исходный предмет после true, dropped — награда уже выдана.
+-- allowDrop = false запрещает сумку; для операций с чужими предметами используйте AddItemStrict.
+Inventory.AddItem = function(identifier, item, amount, slot, info, reason, allowDrop)
+    if type(item) ~= 'string' then return false end
+    item, amount = item:lower(), Inventory.ValidAmount(amount, 1)
+    if not amount or not RSGCore.Shared.Items[item] then return false end
+    local inventory, inventoryWeight, inventorySlots, player = Inventory.GetContainerData(identifier)
+    if not inventory then return false end
+    if player then Inventory.CheckPlayerItemsDecay(player); inventory = player.PlayerData.items
+    else Inventory.CheckItemsDecay(inventory, Helpers.ParseDecayRate(tostring(identifier)) or 1) end
+    local plan, result = Inventory.PlanAddItem(inventory, inventoryWeight, inventorySlots, item, amount, slot, info)
+    if not plan then
+        if player and allowDrop ~= false and config.AutoDropOnFull ~= false
+            and (result == 'weight' or result == 'slots') then
+            local dropId = Inventory.ForceDropItem(identifier, item, amount, info, reason or 'reward overflow')
+            if dropId then return true, 'dropped', dropId end
+            return false, 'drop_failed'
+        end
+        return false, result
     end
-
-    local itemInfo = RSGCore.Shared.Items[item:lower()]
-    if not itemInfo then
-        return false
-    end
-
-    local inventory, inventoryWeight, inventorySlots
-    local player = RSGCore.Functions.GetPlayer(identifier)
-
+    inventory, slot = plan, result
     if player then
-        inventory = player.PlayerData.items
-        inventoryWeight = player.PlayerData.weight
-        inventorySlots = player.PlayerData.slots
-    elseif Inventories[identifier] then
-        local decayRate = Helpers.ParseDecayRate(identifier)
-        inventory = Inventories[identifier].items
-        inventoryWeight = Inventories[identifier].maxweight
-        inventorySlots = Inventories[identifier].slots
-    elseif Drops[identifier] then
-        inventory = Drops[identifier].items
-        inventoryWeight = Drops[identifier].maxweight
-        inventorySlots = Drops[identifier].slots
-    end
-
-    if not inventory then
-        return false
-    end
-
-    Inventory.CheckItemsDecay(inventory, decayRate or 1)
-    
-    local totalWeight = Inventory.GetTotalWeight(inventory)
-    if totalWeight + (itemInfo.weight * amount) > inventoryWeight then
-        -- If this is a player and not a forced add, try to drop on ground
-        if player then
-            Inventory.ForceDropItem(identifier, item, amount, info, reason or 'inventory full - weight')
-        end
-        return false
-    end
-
-    info = info or {}
-    if itemInfo.decay then
-        info.quality = info.quality or 100
-        info.lastUpdate = info.lastUpdate or os.time()
-    end
-
-    local defaultInfo = itemInfo.info or {}
-
-    info = lib.table.merge(defaultInfo, info, false)
-
-    local updated = false
-    if not itemInfo.unique then
-        if not slot then
-            if itemInfo.decay or info.quality then
-                slot = Inventory.GetFirstSlotByItemWithQuality(inventory, item, info.quality)
-            else
-                slot = Inventory.GetFirstSlotByItem(inventory, item)
-            end
-        end
-        if slot then
-            for _, invItem in pairs(inventory) do
-                if invItem.slot == slot and info.quality == invItem.info.quality then
-                    invItem.amount = invItem.amount + amount
-                    updated = true
-                    break
-                end
-            end
-        end
-    end
-
-    if not updated then
-        --slot = slot or Inventory.GetFirstFreeSlot(inventory, inventorySlots)
-		-- Если слот не подходит (нет или занят) → найти свободный
-		if not slot or inventory[slot] then
-			slot = Inventory.GetFirstFreeSlot(inventory, inventorySlots)
-		end
-		
-        if not slot then
-            -- If this is a player and not a forced add, try to drop on ground
-            if player then
-                Inventory.ForceDropItem(identifier, item, amount, info, reason or 'inventory full - slots')
-            end
-            return false
-        end
-
-        inventory[slot] = {
-            name = item,
-            amount = amount,
-            info = info,
-            label = itemInfo.label,
-            description = itemInfo.description or '',
-            weight = itemInfo.weight,
-            type = itemInfo.type,
-            unique = itemInfo.unique,
-            useable = itemInfo.useable,
-			squality = itemInfo.squality,
-            image = itemInfo.image,
-            shouldClose = itemInfo.shouldClose,
-            slot = slot,
-            combinable = itemInfo.combinable
-        }
-
-        if itemInfo.type == 'weapon' then
-            if not inventory[slot].info.serie then
-                inventory[slot].info.serie = tostring(
-                    RSGCore.Shared.RandomInt(2) .. 
-                    RSGCore.Shared.RandomStr(3) .. 
-                    RSGCore.Shared.RandomInt(1) .. 
-                    RSGCore.Shared.RandomStr(2) .. 
-                    RSGCore.Shared.RandomInt(3) .. 
-                    RSGCore.Shared.RandomStr(4)
-                )
-            end
-            if not inventory[slot].info.quality then
-                inventory[slot].info.quality = 100
-            end
-        end
-    end
+        player.PlayerData.items = inventory
+        Inventory.BuildNameIndex(identifier, inventory)
+    elseif Inventories[identifier] then Inventories[identifier].items = inventory
+    else Drops[identifier].items = inventory end
 
     if player then
 		-- slot уже содержит либо новый предмет, либо обновлённый стак
@@ -1019,121 +859,46 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason)
         '**Resource:** ' .. resourceName
     )
 
-    return true
+    return true, 'inventory'
 end
 
 exports('AddItem', Inventory.AddItem)
 
--- Removes an item from a player's inventory.
---- @param identifier string - The identifier of the player.
---- @param item string - The name of the item to remove.
---- @param amount number - The amount of the item to remove.
---- @param slot number - The slot number of the item in the inventory. If not provided, it will find the first slot with the item.
---- @param reason string - The reason for removing the item. Defaults to 'No reason specified' if not provided.
---- @return boolean - Returns true if the item was successfully removed, false otherwise.
+-- Передача, покупка и перемещение не должны создавать неявную сумку при отказе.
+-- Та же сигнатура первых шести аргументов, что у AddItem.
+-- При нехватке места возвращает false и не создаёт предмет в мире.
+-- Подходит для сбора с блокировкой, покупок и перемещений; проверяйте результат выдачи.
+Inventory.AddItemStrict = function(identifier, item, amount, slot, info, reason)
+    return Inventory.AddItem(identifier, item, amount, slot, info, reason, false)
+end
+exports('AddItemStrict', Inventory.AddItemStrict)
+
+
+-- Удаляет указанное количество предмета.
+--- @param identifier string
+--- @param item string
+--- @param amount number
+--- @param slot number
+--- @param reason string
+--- @return boolean
+-- Сначала планирует всё списание, затем применяет его и обновляет индекс и события.
+-- Если количества не хватает, исходные items не меняются. slot ограничивает списание этим слотом.
 Inventory.RemoveItem = function(identifier, item, amount, slot, reason, isMove)
-    if not RSGCore.Shared.Items[item:lower()] then
-        print('RemoveItem: Invalid item')
-        return false
-    end
-
-    local inventory
-    local player = RSGCore.Functions.GetPlayer(identifier)
-    local inventoryItem = nil
-
+    if type(item) ~= 'string' then return false end
+    item, amount = item:lower(), Inventory.ValidAmount(amount, 1)
+    if not amount or not RSGCore.Shared.Items[item] then return false end
+    local inventory, _, _, player = Inventory.GetContainerData(identifier)
+    if not inventory then return false end
+    if player then Inventory.CheckPlayerItemsDecay(player); inventory = player.PlayerData.items
+    else Inventory.CheckItemsDecay(inventory, Helpers.ParseDecayRate(tostring(identifier)) or 1) end
+    local plan, inventoryItem, removedSlot = Inventory.PlanRemoveItem(inventory, item, amount, slot)
+    if not plan then return false end
+    inventory, slot = plan, removedSlot
     if player then
-        inventory = player.PlayerData.items
-    elseif Inventories[identifier] then
-        local decayRate = Helpers.ParseDecayRate(identifier)
-        inventory = Inventories[identifier].items
-    elseif Drops[identifier] then
-        inventory = Drops[identifier].items
-    end
-
-    if not inventory then
-        print('RemoveItem: Inventory not found')
-        return false
-    end
-
-    Inventory.CheckItemsDecay(inventory, decayRate or 1)
-
-    amount = tonumber(amount) or 1
-    
-    if slot then
-        slot = tonumber(slot)
-        local itemKey = nil
-
-        for key, invItem in pairs(inventory) do
-            if invItem.slot == slot then
-                inventoryItem = invItem
-                itemKey = key
-                break
-            end
-        end
-
-        if not inventoryItem or inventoryItem.name:lower() ~= item:lower() then
-            print('RemoveItem: Item not found in slot')
-            return false
-        end
-
-        if inventoryItem.amount < amount then
-            print('RemoveItem: Not enough items in slot')
-            return false
-        end
-
-        inventoryItem.amount = inventoryItem.amount - amount
-        if inventoryItem.amount <= 0 then
-            inventory[itemKey] = nil
-			
-			if player then
-				Inventory.NameIndexRemove(identifier, inventoryItem.name, itemKey)
-			end
-        else
-            inventory[itemKey] = inventoryItem
-			
-			if player then
-				Inventory.NameIndexAdd(identifier, inventoryItem)
-			end
-        end
-
-    else
-        local totalRemoved = 0
-
-        for itemKey, invItem in pairs(inventory) do
-            if invItem.name:lower() == item:lower() then
-                local available = invItem.amount
-                local removeAmount = math.min(available, amount - totalRemoved)
-                invItem.amount = invItem.amount - removeAmount
-                totalRemoved = totalRemoved + removeAmount
-                inventoryItem = invItem
-
-                if invItem.amount <= 0 then
-                    inventory[itemKey] = nil
-					
-					if player then
-						Inventory.NameIndexRemove(identifier, invItem.name, itemKey)
-					end
-                else
-                    inventory[itemKey] = invItem
-					
-					if player then
-						Inventory.NameIndexAdd(identifier, invItem)
-					end
-                end
-
-                if totalRemoved >= amount then
-                    break
-                end
-            end
-        end
-
-        if totalRemoved < amount then
-            print('RemoveItem: Not enough items in inventory')
-            return false
-        end
-
-        slot = 'Multiple'
-    end
+        player.PlayerData.items = inventory
+        Inventory.BuildNameIndex(identifier, inventory)
+    elseif Inventories[identifier] then Inventories[identifier].items = inventory
+    else Drops[identifier].items = inventory end
 
     if RSGCore.Shared.Items[item:lower()]['type'] == 'weapon' and player and isMove then
         TriggerClientEvent('rsg-core:client:RemoveWeaponFromTab', identifier, item)
@@ -1158,8 +923,8 @@ Inventory.RemoveItem = function(identifier, item, amount, slot, reason, isMove)
 		
 		
 		
-        -- Trigger event hook for external resources to handle custom 'after removal' logic
-        -- This event is not registered in rsg-inventory itself - it's for third-party resources
+        -- Хук для сторонних ресурсов после успешного списания предмета.
+        -- Подписчик получает количество, слот, info, причину и признак перемещения.
         local data = {
             amount = amount,
             slot = slot,
@@ -1201,9 +966,9 @@ end
 
 exports('GetInventory', Inventory.GetInventory)
 
---- Initialize or update inventory data
---- @param identifier string - The identifier of the inventory.
---- @param data table - The data of the inventory
+--- Создаёт или обновляет параметры контейнера.
+--- @param identifier string
+--- @param data table
 Inventory.CreateInventory = function (identifier, data)
     if Inventories[identifier] then 
         if data.label then
@@ -1224,8 +989,8 @@ end
 
 exports('CreateInventory', Inventory.CreateInventory)
 
--- Deletes an inventory from the global Inventories table
---- @param identifier string - The identifier of the inventory to delete
+-- Удаляет контейнер из памяти Inventories, не из БД.
+--- @param identifier string
 Inventory.DeleteInventory = function(identifier)
     if Inventories[identifier] then
         Inventories[identifier] = nil
@@ -1236,3 +1001,25 @@ Inventory.DeleteInventory = function(identifier)
 end
 
 exports('DeleteInventory', Inventory.DeleteInventory)
+-- Возвращает снимок слотов и веса игрока из кеша либо nil, если игрок не найден.
+-- Предварительно проверяет decay, чтобы удалённые предметы не занимали место в результате.
+Inventory.GetInventoryStats = function(source)
+    local player = RSGCore.Functions.GetPlayer(source)
+    if not player then return nil end
+    Inventory.CheckPlayerItemsDecay(player)
+    local index = Inventory.GetPlayerIndex(source)
+    return {
+        usedSlots = index.usedSlots, freeSlots = math.max(0, player.PlayerData.slots - index.usedSlots),
+        maxSlots = player.PlayerData.slots, weight = index.weight, maxWeight = player.PlayerData.weight,
+        freeWeight = math.max(0, player.PlayerData.weight - index.weight)
+    }
+end
+exports('GetInventoryStats', Inventory.GetInventoryStats)
+-- Восстанавливает только серверный индекс после нестандартной внешней правки.
+-- Не синхронизирует клиента и не пересчитывает ItemState; обычным операциям этот вызов не нужен.
+exports('RebuildInventoryIndex', function(source)
+    local player = RSGCore.Functions.GetPlayer(source)
+    if not player then return false end
+    Inventory.BuildNameIndex(source, player.PlayerData.items)
+    return true
+end)

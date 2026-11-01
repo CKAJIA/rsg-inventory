@@ -1,31 +1,37 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
 local config = require 'shared.config'
 
--- Rate limiting
+-- Ограничивает повторные запросы покупки и продажи.
 local purchaseCooldowns = {}
 
--- Helper function for notifications
+-- Единое уведомление игрока об отказе или результате операции.
 local function notifyPlayer(source, messageKey, type)
     TriggerClientEvent('ox_lib:notify', source, { title = locale(messageKey), type = type or 'error', duration = 5000 })
 end
 
+-- Покупка и продажа используют серверные данные магазина и фактического слота.
+-- Продажа оплачивается после успешного списания. При отказе строгой выдачи покупки деньги возвращаются.
 lib.callback.register('rsg-inventory:server:attemptPurchase', function(source, data)
-    -- Rate limit
+    -- Ограничение частоты запросов.
     local now = os.time()
     if purchaseCooldowns[source] and now - purchaseCooldowns[source] < 1 then return false end
     purchaseCooldowns[source] = now
 
+    if type(data) ~= 'table' or type(data.item) ~= 'table' or type(data.shop) ~= 'string' then return false end
     local itemInfo      = data.item
-    local amount        = math.round(data.amount)
+    local amount        = Inventory.ValidAmount(data.amount)
+    if not amount or type(itemInfo.name) ~= 'string' then return false end
+    local definition = RSGCore.Shared.Items[itemInfo.name:lower()]
+    if not definition then return false end
     local shopName      = string.gsub(data.shop, '^shop%-', '')
     local sourceInvType = data.sourceinvtype
     --local targetSlot    = data.targetslot
 
-    -- Prevent non-positive amount
+    -- Количество должно быть положительным целым числом.
     if amount <= 0 then return false end
 
-    -- Unique items can only be purchased in quantity 1
-    if itemInfo.unique and amount > 1 then amount = 1 end
+    -- В одной операции магазина уникальный предмет покупается по одной единице.
+    if definition.unique and amount > 1 then amount = 1 end
 
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return false end
@@ -35,45 +41,46 @@ lib.callback.register('rsg-inventory:server:attemptPurchase', function(source, d
 
 	if not checkShopMode(source, data, sourceInvType) then return false end
 
-    -- Distance check if shop has coordinates
+    -- Проверяем расстояние до магазина, если у него заданы координаты.
     if shopInfo.coords then
         local playerCoords = GetEntityCoords(GetPlayerPed(source))
         local shopCoords   = vector3(shopInfo.coords.x, shopInfo.coords.y, shopInfo.coords.z)
         if #(playerCoords - shopCoords) > 10.0 then return false end
     end
 
-    -- Selling items to shop
+    -- Продажа предмета игроком магазину.
     if sourceInvType == 'player' then
         for _, shopItem in ipairs(shopInfo.items) do
             if itemInfo.name == shopItem.name and shopItem.buyPrice then
-                -- Fetch the real item from player inventory by slot (don't trust client quality)
+                -- Берём настоящий предмет по серверному слоту, включая качество и количество.
                 local realItem = Inventory.GetItemBySlot(source, itemInfo.slot)
-                if not realItem or realItem.name ~= itemInfo.name then
+                if not realItem or realItem.name ~= itemInfo.name or realItem.amount < amount then
                     notifyPlayer(source, 'error.not_enough_items') return false
                 end
                 local realQuality = realItem.info.quality or 100
 
-                -- Quality check
+                -- Проверяем минимально допустимое качество.
                 if realQuality < (shopItem.minQuality or 1) then
                     notifyPlayer(source, 'error.quality_too_low') return false
                 end
 
-                -- Max stock check
+                -- Проверяем допустимый остаток товара магазина.
                 if shopItem.maxStock and shopItem.maxStock < (shopItem.amount + amount) then
                     notifyPlayer(source, 'error.shop_fully_stocked') return false
                 end
 
-                -- Player has enough items
+                -- Проверяем наличие нужного количества у игрока.
                 if not Inventory.HasItem(source, itemInfo.name, amount) then
                     notifyPlayer(source, 'error.not_enough_items') return false
                 end
 
-                -- Update shop stock and calculate buy price using server-side quality
-                if shopItem.amount then shopItem.amount = shopItem.amount + amount end
+                -- Выплата учитывает настоящее серверное качество, остаток меняется после списания.
+                -- До успешного списания предметов остаток магазина не меняется.
                 local buyPrice = shopItem.buyPrice * amount * (realQuality / 100)
                 buyPrice = math.max(0.01, math.round(buyPrice, 2))
 				
-				Inventory.RemoveItem(source, itemInfo.name, amount, itemInfo.slot, 'shop-sell')
+				if not Inventory.RemoveItem(source, itemInfo.name, amount, itemInfo.slot, 'shop-sell') then return false end
+                if shopItem.amount then shopItem.amount = shopItem.amount + amount end
 				Player.Functions.AddMoney('cash', buyPrice, 'shop-sell')
 				--TriggerClientEvent('rsg-inventory:client:updateInventory', source)
 				TriggerClientEvent('rsg-inventory:client:updateShopInventory', source, shopInfo.items)
@@ -84,7 +91,7 @@ lib.callback.register('rsg-inventory:server:attemptPurchase', function(source, d
         notifyPlayer(source, 'error.shop_does_not_buy') return false
     end
 
-    -- Buying items from shop
+    -- Покупка предмета игроком у магазина.
     local shopSlot = shopInfo.items[itemInfo.slot]
     if not shopSlot or shopSlot.name ~= itemInfo.name then return false end
 
@@ -92,7 +99,7 @@ lib.callback.register('rsg-inventory:server:attemptPurchase', function(source, d
         notifyPlayer(source, 'error.cannot_purchase_more_than_stock') return false
     end
 
-    if not Inventory.CanAddItem(source, itemInfo.name, amount) then
+    if not Inventory.CanAddItem(source, itemInfo.name, amount, shopSlot.info) then
         notifyPlayer(source, 'error.cannot_carry') return false
     end
 
@@ -105,14 +112,13 @@ lib.callback.register('rsg-inventory:server:attemptPurchase', function(source, d
         notifyPlayer(source, 'error.not_enough_money') return false
     end
 
-    if shopSlot.amount then
-        shopSlot.amount = shopSlot.amount - amount
+    if not Player.Functions.RemoveMoney('cash', price, 'shop-purchase') then return false end
+    if not Inventory.AddItemStrict(source, itemInfo.name, amount, false, shopSlot.info or {}, 'shop-purchase') then
+        Player.Functions.AddMoney('cash', price, 'shop-purchase refund')
+        notifyPlayer(source, 'error.cannot_carry')
+        return false
     end
-
-    Player.Functions.RemoveMoney('cash', price, 'shop-purchase')
-    --Inventory.AddItem(source, itemInfo.name, amount, targetSlot, itemInfo.info, 'shop-purchase')
-    Inventory.AddItem(source, itemInfo.name, amount, false, shopSlot.info or {}, 'shop-purchase')
-    --TriggerClientEvent('rsg-inventory:client:updateInventory', source)
+    if shopSlot.amount then shopSlot.amount = shopSlot.amount - amount end
 	TriggerClientEvent('rsg-inventory:client:updateShopInventory', source, shopInfo.items)
     return true
 end)
@@ -132,16 +138,16 @@ lib.callback.register('rsg-inventory:server:checkPurchase', function(source, dat
 	
 	if not checkShopMode(source, data, sourceInvType) then return false end
 	
-	-- Selling items to shop
+	-- Продажа предмета игроком магазину.
 	if sourceInvType == 'player' then
         for slot, shopItem in ipairs(shopInfo.items) do 
             if itemInfo.name == shopItem.name and shopItem.buyPrice ~= nil then 
-				-- Quality check
+				-- Проверяем минимально допустимое качество.
                 if itemInfo.info.quality and itemInfo.info.quality < (shopItem.minQuality or 1) then
 					notifyPlayer(source, 'error.quality_too_low') return false
                 end
 				
-				-- Max stock check
+				-- Проверяем допустимый остаток товара магазина.
                 if shopItem.maxStock and shopItem.maxStock < (shopItem.amount + amount) then
                     notifyPlayer(source, 'error.shop_fully_stocked') return false
                 end
@@ -150,7 +156,7 @@ lib.callback.register('rsg-inventory:server:checkPurchase', function(source, dat
                     return true
                 end
 				
-				-- Update shop stock and calculate buy price
+				-- Рассчитываем цену приёма предмета магазином.
                 if shopItem.amount then shopItem.amount = shopItem.amount + amount end
                 local buyPrice = shopItem.buyPrice * amount
                 if itemInfo.info.quality then
@@ -167,7 +173,7 @@ lib.callback.register('rsg-inventory:server:checkPurchase', function(source, dat
 		notifyPlayer(source, 'error.shop_does_not_buy') return false
     end
 	--TODO: Надо тут посидеть подумать чтобы если мы продаем в магазин почему не можем продать при перетаскивании.
-	-- Buying items from shop
+	-- Покупка предмета игроком у магазина.
     local shopSlot = shopInfo.items[itemInfo.slot]
     if not shopSlot or shopSlot.name ~= itemInfo.name then return false end
 

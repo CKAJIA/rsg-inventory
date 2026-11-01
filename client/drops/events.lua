@@ -1,33 +1,40 @@
----Handles initialisation of drop system and resetting player drop state
----when the resource starts/restarts.
-AddEventHandler('onResourceStart', function(resourceName)
-    if resourceName == GetCurrentResourceName() then
-        Drops.ResetPlayerState()
-    end
+-- Сумки и их взаимодействия инициализируются только для вошедшего персонажа.
+InventorySession.OnStart(function(session)
+    Drops.ResetPlayerState()
+    Drops.GetDrops(session)
 end)
 
----Triggered when the player successfully loads into the server.
----Resets drop state and fetches current world drops.
-RegisterNetEvent('RSGCore:Client:OnPlayerLoaded', function()
-    Drops.ResetPlayerState()
-    Drops.GetDrops()
-end)
+-- Ожидание стриминга допустимо только в текущей сессии и отменяется удалением сумки.
+local pendingTargets = {}
+InventorySession.OnStop(function() pendingTargets = {} end)
 
 ---Removes the target interaction from a dropped bag entity.
 ---@param dropId number Network ID of the entity that needs to have its ox_target removed
 RegisterNetEvent('rsg-inventory:client:removeDropTarget', function(dropId)
-    repeat Wait(10) until NetworkDoesNetworkIdExist(dropId)
+    pendingTargets[dropId] = nil
+    -- Если объект не стримится, удалять локальную привязку не нужно; ожидание не создаём.
+    if not InventorySession.IsActive() or not NetworkDoesNetworkIdExist(dropId) then return end
     local bag = NetworkGetEntityFromNetworkId(dropId)
-    repeat Wait(10) until DoesEntityExist(bag)
-    exports.ox_target:removeLocalEntity(bag)
+    if bag and bag ~= 0 and DoesEntityExist(bag) then exports.ox_target:removeLocalEntity(bag) end
 end)
 
 ---Adds ox_target interactions (open / pickup) to a dropped bag entity.
 ---@param dropId number Network ID of the bag entity
 RegisterNetEvent('rsg-inventory:client:setupDropTarget', function(dropId)
-    repeat Wait(10) until NetworkDoesNetworkIdExist(dropId)
-    local bag = NetworkGetEntityFromNetworkId(dropId)
-    repeat Wait(10) until DoesEntityExist(bag)
+    -- Рассылка мировых сумок приходит и на экран входа: до загрузки её пропускаем.
+    if not InventorySession.IsActive() then return end
+    local session, token = InventorySession.GetGeneration(), {}
+    pendingTargets[dropId] = token
+    local bag
+    while InventorySession.IsCurrent(session) and pendingTargets[dropId] == token do
+        if NetworkDoesNetworkIdExist(dropId) then
+            local entity = NetworkGetEntityFromNetworkId(dropId)
+            if entity and entity ~= 0 and DoesEntityExist(entity) then bag = entity; break end
+        end
+        Wait(250)
+    end
+    if pendingTargets[dropId] == token then pendingTargets[dropId] = nil end
+    if not bag or not InventorySession.IsCurrent(session) then return end
 
     local newDropId = Helpers.CreateDropId(dropId)
 
@@ -38,7 +45,9 @@ RegisterNetEvent('rsg-inventory:client:setupDropTarget', function(dropId)
             icon     = 'fas fa-box',
             label    = locale('info.o_bag'),
             distance = 2.5,
+            canInteract = function() return InventorySession.IsActive() end,
             onSelect = function()
+                if not InventorySession.IsActive() then return end
                 TriggerServerEvent('rsg-inventory:server:openDrop', newDropId)
                 LocalPlayer.state.currentDrop = newDropId
             end,
@@ -49,7 +58,10 @@ RegisterNetEvent('rsg-inventory:client:setupDropTarget', function(dropId)
             icon     = 'fas fa-hand-pointer',
             label    = locale('info.Pickup_bag'),
             distance = 2.5,
+            canInteract = function() return InventorySession.IsActive() end,
             onSelect = function()
+                if not InventorySession.IsActive() then return end
+                local interactionSession = InventorySession.GetGeneration()
                 local weapon = GetPedCurrentHeldWeapon(PlayerPedId())
 
                 -- Prevent picking up while holding weapon or another drop
@@ -74,6 +86,7 @@ RegisterNetEvent('rsg-inventory:client:setupDropTarget', function(dropId)
                 Citizen.InvokeNative(0x524B54361229154F, PlayerPedId(), GetHashKey("RANSACK_FALLBACK_PICKUP_CROUCH"), 0, 1, GetHashKey("RANSACK_PICKUP_H_0m0_FALLBACK_CROUCH"), -1.0, 0)
 
                 Wait(1000)
+                if not InventorySession.IsCurrent(interactionSession) or not DoesEntityExist(bag) then return end
 
                 -- Attach bag to player's bone
                 local config    = require 'shared.config'

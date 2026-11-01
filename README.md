@@ -1,74 +1,574 @@
-<img width="2948" height="497" alt="rsg_framework" src="https://github.com/user-attachments/assets/638791d8-296d-4817-a596-785325c1b83a" />
+# rsg-inventory — руководство по этой сборке
 
----
+Слотовый инвентарь для RedM на RSG Core с вашим интерфейсом, обменом, магазинами, сумками на земле, колесом предметов и состояниями для других ресурсов. Это доработанная сборка с версией `2.8.5` в манифесте. Порядок аргументов её API сохранён; документация upstream `3.x` к нему напрямую не подходит.
 
-# 🎯 RSG‑Inventory  
-**Converted from qb‑inventory fully optimized for RedM Roleplay with RSG Core & ox_lib.**
+## Содержание
 
-![Version](https://img.shields.io/badge/version-2.6.3-red)
-![Platform](https://img.shields.io/badge/platform-RedM-darkred)
-![License](https://img.shields.io/badge/license-MIT-green)
+- [Возможности и поведение при переполнении](#возможности-и-поведение-при-переполнении)
+- [Установка и настройки](#установка-и-настройки)
+- [Быстрые проверки без регистрации предметов](#быстрые-проверки-без-регистрации-предметов)
+- [Вместимость и композиты: проверка каждый кадр](#вместимость-и-композиты-проверка-каждый-кадр)
+- [Выдача, удаление и метаданные](#выдача-удаление-и-метаданные)
+- [Хранилища и магазины](#хранилища-и-магазины)
+- [Состояния предметов и события](#состояния-предметов-и-события)
+- [Справочник экспортов](#справочник-экспортов)
+- [Кеширование, структура и проверки](#кеширование-структура-и-проверки)
 
-> A robust, modular inventory system for your RedM server.
+## Возможности и поведение при переполнении
 
----
+### Инвентарь игрока
 
-## 🛠️ Dependencies
-Make sure these resources are running before starting **rsg-inventory**:
+- Слоты, общий вес и лимиты игрока из `PlayerData.slots` / `PlayerData.weight`.
+- Стаки неуникальных предметов, разделение количества, перемещение, использование и передача.
+- Отдельные слоты для каждой единицы `unique`; автоматические серийные номера оружия без `info.serie`.
+- Метаданные `info`, качество и порча `decay`. При `delete = true` испорченные предметы удаляются.
+- Горячие слоты 1–5, защита от частого использования, взаимодействие с `rsg-weapons`.
+- Категории предметов и отдельная категория продажи, отображение описаний и метаданных.
+- Существующие оформление, изображения и CSS сохранены. Эффекты интерфейса настраиваются в `html/effects-config.js`.
 
-- [**ox_lib**](https://github.com/Rexshack-RedM/ox_lib) ⚙️  
-- [**ox_target**](https://github.com/Rexshack-RedM/ox_target) 👁️  
-- [**rsg-core**](https://github.com/Rexshack-RedM/rsg-core) 🤠  
-- [**rsg-weapons**](https://github.com/Rexshack-RedM/rsg-weapons) 🔫
+Для стака должны совпасть имя и метаданные, предмет не должен быть уникальным. Качество, происхождение, пользовательские поля и вложенные таблицы учитываются. Только верхнее поле `lastUpdate` у предметов с `decay` не разделяет стаки. Например, хлеб с разными `quality` или `batch` может потребовать разные слоты.
 
----
+Контекстное меню позволяет использовать предмет, передать или выбросить одну единицу, половину, введённое количество или весь стак; разделить стак на одну единицу, половину или заданное количество. Для оружия доступно копирование `info.serie`. Пункты «Прикрепить» / «Переименовать» у `notepad` вызывают `shiw-notepad:client:attach` / `shiw-notepad:client:rename`: для них нужен отдельный ресурс `shiw-notepad`.
 
-## ✨ Features
-- 🗄 **Stashes** — Personal and/or shared  
-- 🐎 **Vehicle Trunk & Glovebox** — Includes optional horse saddlebag support  
-- 🏪 **Shops** — Works great with [**rsg-shops**](https://github.com/Rexshack-RedM/rsg-shops) 🥐  
-- 🎒 **Item Drops** — Physical objects in the world  
-- 🔁 **Player Trading** — Right-click a player to send a trade request; secure item exchange with escrow system and full rollback on cancel/disconnect
-- ⚖ **Configurable Limits** — Stash, and drop sizes  
-- 🚫 **Hotbar Spam Protection** — Adjustable timers and notifications  
+Иконки эффектов в `html/effects-config.js` описывают отображение свойств предмета. Само изменение здоровья, голода и других характеристик выполняют обработчики использования предметов. Например, запись `bread: [hp_restore(5), stamina_restore(10)]` задаёт показ соответствующих иконок, а не серверную логику восстановления.
 
----
+В интерфейсе также есть пункт модификаций оружия, но Lua-обработчики `GetWeaponData` / `RemoveAttachment` в `client/ui/callbacks.lua` этой копии закомментированы. Этот пункт требует отдельного подключения совместимой логики оружия и не описывается как готовая функция снятия компонентов.
 
-## 📸 Inventory Preview
-<p align="center">
-  <img width="503" height="638" alt="Inventory Preview" src="https://github.com/user-attachments/assets/f1d965e0-19cb-4131-af79-bc374b2c9913" />
-</p>
+### Обычная передача и обмен
 
----
+Обычная передача сначала проверяет оба инвентаря. Если получателю не хватает веса или слотов, предмет остаётся отправителю, сумка не создаётся, уведомление получают оба игрока. Совместимый стак позволяет принять неуникальный предмет даже при отсутствии пустых слотов, если хватает веса.
 
-## 📜 Example Config
-```lua
-return {
-    StashSize = { maxweight = 2000000, slots = 100 },
-    DropSize = { maxweight = 1000000, slots = 50 },
-    HotbarSpamProtectionTimeout = 500,
-    HotbarSpamProtectionNotify = false,
-    GiveItemType = "nearby",
-}
+Обмен открывается через `/trade` или действие на игроке в `ox_target`. Есть запрос, предложения двух сторон, подтверждение и отмена. Предложенные предметы временно изымаются в `escrow` — таблицу текущего обмена на сервере. Вместимость проверяется для всего предложения, а не каждого предмета отдельно. При изменении предложения или инвентаря участника сервер обновляет форму: существующая кнопка принятия блокируется, а причина показывается в верхнем информационном блоке `item-tradeinfo` / `item-trading`. Сообщение о вместимости имеет приоритет над ожиданием подтверждения и пустым предложением; нижняя строка у кнопок сохраняет название категории. Перед завершением обмена сервер проверяет всё ещё раз.
+
+При отмене предметы возвращаются владельцу. Если он успел заполнить инвентарь, возврат может создать сумку. Это отдельный случай возврата уже изъятого предложения, а не обычная передача заполненному получателю.
+
+### Сумки, хранилища и магазины
+
+- Физические сумки с предметами, ручной выброс и получение наград в сумку при переполнении.
+- Проверка создания объекта и сетевого ID до списания ручного выброса.
+- Подтверждение успешного выброса до клиентской анимации: ошибка оформления не отменяет созданную сумку.
+- Хранилища с собственными названиями, весом, слотами и сохранением в БД.
+- Множитель порчи в названии хранилища: `freezer-decay0` отключает её при обработке контейнера, `basement-decay30` задаёт 30% обычной скорости, `composter-decay5000` — 5000%.
+- Магазины с покупкой, продажей через `buyPrice`, остатками и пополнением. При `persistentStock = true` остатки сохраняются в `shop_stock`.
+- Настраиваемые торговые автоматы через `VendingObjects` / `VendingItems`.
+
+### Колесо и интеграции
+
+`shared/inputwheelconfig.lua` связывает имена предметов RSG с нативными предметами колеса RedM. Для настроенных предметов синхронизируются количества и обработка использования. `nativeName` — нативное имя, а ключ `WheelItems` — имя именно из `RSGCore.Shared.Items`. Упоминания VORP в старых комментариях конфига не меняют этого.
+
+Для других ресурсов доступны быстрые количества, `HasItem`, проверка вместимости, статистика, события изменений и регистрируемые логические состояния с необязательным прогрессом. Для обычного поиска и вместимости предварительная регистрация предметов не нужна.
+
+## Установка и настройки
+
+Зависимости: `oxmysql`, `ox_lib`, `rsg-core`, `ox_target`, `rsg-weapons`. Ресурсы магазинов, домов, композитов и используемых предметов подключаются отдельно. Инвентарь не заменяет их игровые обработчики.
+
+1. Поместите папку под именем `rsg-inventory` в ресурсы сервера.
+2. При новой установке импортируйте `rsg-inventory.sql`: таблицы `inventories` и `shop_stock`. Таблица `players` принадлежит RSG Core.
+3. `migrate_stash.sql` нужен только при переносе старой таблицы `stashitems`; обычный запуск его не требует.
+4. Запускайте зависимости раньше инвентаря, потребителей его экспортов — после него. Пример порядка с учётом остальных зависимостей вашего сервера:
+
+```cfg
+ensure oxmysql
+ensure ox_lib
+ensure rsg-core
+ensure ox_target
+ensure rsg-weapons
+ensure rsg-inventory
 ```
 
----
-
-## 📂 Installation
-1. **Download** this resource and place it in your `resources` folder  
-2. **Install** and start `ox_lib` and `rsg-core` and  `rsg-shops` 
-3. Add `ensure rsg-inventory` to your `server.cfg`  
-4. Edit `shared/config.lua` to fit your server’s needs
+В `fxmanifest.lua` своего ресурса укажите:
 
 ```lua
---- NOTES
-
---- player inventory max weight and slots are configured in rsg-core\config.lua (RSGConfig.Player.PlayerDefaults)
---- if inventory items should decay at modified rate, add decay{PERCENTAGE} to stash name (i.e.: basement69-decay30, freezer111_decay0, composter333decay5000)
+dependency 'rsg-inventory'
 ```
----
 
-## 💎 Credits
-- [**The Icon Library Project**](https://github.com/TankieTwitch/FREE-RedM-Image-Library) 🖼 — free RedM item icons
+Описание предмета должно существовать в `RSGCore.Shared.Items`. Изображения находятся в `html/images`, язык задаётся настройкой locale `ox_lib`; переводы — в `locales`.
 
----
+Основные параметры `shared/config.lua`:
+
+| Параметр | Назначение |
+| --- | --- |
+| `UseTarget` | Выбор взаимодействия через target; читается из convar `UseTarget`. |
+| `AutoDropOnFull` | `true`: обычный `AddItem` при переполнении пытается выдать награду в сумку. Не влияет на `AddItemStrict`. |
+| `StashSize.maxweight`, `.slots` | Лимиты хранилища по умолчанию. |
+| `DropSize.maxweight`, `.slots` | Лимиты сумки, включая автоматическую выдачу награды. |
+| `MaxTradeSlots` | Число позиций предложения трейда; учитывайте существующую сетку интерфейса. |
+| `TradeBlockedItems` | Запрет добавления перечисленных имён в форму трейда. Не общий запрет всех серверных выдач. |
+| `GiveItemType` | Способ выбора получателя обычной передачи: `id`, `nearby`, `nearby_menu`. |
+| `Keybinds` | Клавиши открытия инвентаря и горячих слотов. |
+| `HotbarSpamProtectionTimeout`, `HotbarSpamProtectionNotify` | Задержка и уведомления защиты горячих слотов. |
+| `CleanupDropTime`, `CleanupDropInterval` | Возраст сумки и период проверки очистки, в минутах. Открытые сумки пропускаются. |
+| `ItemDropObject`, `ItemDropObjectBone`, `ItemDropObjectOffset` | Модель и размещение сумки. |
+| `ItemsDecayWhileOffline` | Учитывать ли прошедшее офлайн время при загрузке игрока. |
+| `ShopsRestockCycle` | Cron-расписание штатного пополнения магазинов. |
+| `IgnoreShopCategory`, `categories` | Поведение и сопоставление категорий. |
+
+Лимиты игрока настраиваются в RSG Core, а не через закомментированные `MaxWeight` / `MaxSlots` этого конфига. Единицы веса совпадают с `Shared.Items[name].weight`; обычно это граммы, но определяет их ваша база предметов.
+
+Управление по умолчанию:
+
+| Действие | Клавиша / команда |
+| --- | --- |
+| Инвентарь | `I`, `/openinv`, `/inventory` |
+| Горячие слоты | `Z`, `/hotbar`, `/slot_1` … `/slot_5` |
+| Обмен | `/trade`, действие на игроке в `ox_target` |
+| Закрытие | `/closeinv`, кнопки существующего интерфейса |
+| Выдать предмет | `/giveitem ID имя количество`, право `group.admin` |
+| Очистить инвентарь | `/clearinv [ID]`, право `group.admin` |
+| Случайные предметы | `/randomitems`, право `group.god` |
+
+Имена большинства команд изменяются в `CommandNames`. `serversidehotbar` — внутренняя команда открытия панели. В модуле колеса также остались диагностические `/awz_addnativeitem` и `/awz_removenativeitem`: они меняют нативное представление на клиенте, не являются API выдачи серверных предметов.
+
+## Быстрые проверки без регистрации предметов
+
+На клиенте запросы относятся к локальному игроку:
+
+```lua
+local inventory = exports['rsg-inventory']
+
+local bread = inventory:GetItemCount('bread') -- Сумма всех стаков.
+local hasFive = inventory:HasItem('bread', 5)
+local hasBoth = inventory:HasItem({ 'bread', 'water' }, 2) -- По 2 каждого.
+local hasAny = inventory:HasItem({ 'bread', 'water' }, 1, true)
+local meetsRecipe = inventory:HasItem({ bread = 3, water = 2 })
+local meetsAny = inventory:HasItem({ bread = 3, water = 2 }, nil, true)
+```
+
+На сервере первым аргументом передаётся ID игрока:
+
+```lua
+local inventory = exports['rsg-inventory']
+local count = inventory:GetItemCount(source, 'bread')
+local total = inventory:GetItemCount(source, { 'bread', 'water' })
+local enough = inventory:HasItem(source, { bread = 3, water = 2 })
+local first = inventory:GetItemByName(source, 'bread')
+local stacks = inventory:GetItemsByName(source, 'bread')
+```
+
+`GetItemCount` / `HasItem` считают количество по всем стакам, независимо от различий `info`. Для поиска конкретной партии или качества получите стаки нужного имени через `GetItemsByName` и проверьте их метаданные. Не меняйте возвращённые серверные таблицы напрямую: это ссылки на живые предметы.
+
+## Вместимость и композиты: проверка каждый кадр
+
+### Проверяйте возможность принять конкретную награду
+
+```lua
+-- client.lua другого ресурса
+local canReceive, reason = exports['rsg-inventory']:CanAddItem('yarrow', 1)
+```
+
+`yarrow` здесь пример: замените его на настоящее имя вашего предмета. Количество и `info` должны совпадать с планируемой наградой.
+
+Проверка учитывает вес, слоты, `unique` и совместимые метаданные. Полные слоты ещё не означают отказ: если есть подходящий стак и хватает веса, вернётся `true`. Наличие предмета по имени тоже не гарантирует стак: могут различаться качество или другие поля `info`.
+
+Клиентский вызов не отправляет запрос на сервер. Вес и занятость берутся из автоматического кеша. При полном инвентаре первый запрос проверяет только стаки указанного имени и запоминает результат. Повторные запросы с тем же `info` используют этот результат до синхронизации `PlayerData`; весь инвентарь каждый кадр не перебирается. Для переданного `info` сравниваются его поля, поэтому стоимость зависит от размера метаданных. Для каждого имени хранится последний вариант проверки стака.
+
+### Затемнение существующего промпта
+
+Добавьте этот помощник в клиентский код своего ресурса композитов:
+
+```lua
+-- promptHandle — уже созданный вашим ресурсом промпт сбора.
+-- Вызывайте в существующем цикле отображения активного композита.
+local function updateHarvestPrompt(promptHandle, itemName, amount, info)
+    local canReceive, reason = exports['rsg-inventory']:CanAddItem(itemName, amount, info)
+    Citizen.InvokeNative(0x8A0FB4D03A630D21, promptHandle, canReceive)
+    return canReceive, reason
+end
+
+-- В вашем существующем цикле с Wait(0), когда композит доступен:
+-- local canHarvest, reason = updateHarvestPrompt(harvestPrompt, 'yarrow', 1)
+-- Срабатывание сбора также разрешайте только при canHarvest == true.
+```
+
+Используется натив включения промпта `_UI_PROMPT_SET_ENABLED`; пример его вызова есть в [документации Jump On Studios](https://docs.jumpon-studios.com/RedM/mouse-selection). Передавайте настоящий handle, созданный вашим ресурсом. Если ресурс отдельно включает промпт позже в кадре, перенесите проверку в его окончательную настройку, иначе он перезапишет состояние.
+
+Такую локальную проверку можно вызывать каждый кадр, пока отображается точка сбора. Не запускайте серверный callback, серверный `CanAddItem` или пересборку индекса каждый кадр. Саму группу промптов продолжайте отображать так, как это уже делает ресурс композитов.
+
+Для NUI вместо нативного промпта передайте `canReceive` в существующее состояние кнопки (`disabled` и её штатное затемнение). Сообщение «Инвентарь заполнен» показывайте по причинам `weight` / `slots`; неизвестный предмет или отсутствие данных игрока — другая ошибка.
+
+### Окончательная выдача — на сервере
+
+Клиентский результат — подсказка по последнему синхронизированному снимку. Он может устареть из-за другой выдачи, обмена или порчи предмета. Клиент не пересчитывает серверный decay по времени. Кнопка не является защитой от поддельного запроса.
+
+Ниже функция для вызова из вашей уже проверенной серверной логики сбора. Имя предмета, количество и метаданные берите из серверного описания композита, а не из присланных клиентом параметров:
+
+```lua
+-- server.lua ресурса композитов
+local function giveHarvestReward(src, itemName, amount, info)
+    -- AddItemStrict сам повторно проверяет вместимость.
+    local ok, reason = exports['rsg-inventory']:AddItemStrict(
+        src, itemName, amount, false, info, 'composite harvest'
+    )
+    if not ok then
+        local message = (reason == 'weight' or reason == 'slots')
+            and 'Инвентарь заполнен'
+            or 'Не удалось получить предмет'
+        TriggerClientEvent('ox_lib:notify', src, { description = message, type = 'error' })
+        return false
+    end
+    return true
+end
+
+-- В обработчике сбора, после проверки дистанции, доступности точки и повторного сбора:
+-- if giveHarvestReward(src, reward.name, reward.amount, reward.info) then
+--     ... ваш код удаления/пометки собранного композита ...
+-- end
+```
+
+При `false` композит не должен считаться собранным. Ваш ресурс также должен исключать одновременный повторный сбор одной точки. Его исходников в этой поставке нет: README показывает место интеграции, сам сбор здесь не изменён.
+
+### Статистика вместимости
+
+```lua
+local stats = exports['rsg-inventory']:GetInventoryStats() -- Клиент.
+-- На сервере: GetInventoryStats(source).
+if stats then
+    print(stats.usedSlots, stats.freeSlots, stats.maxSlots)
+    print(stats.weight, stats.freeWeight, stats.maxWeight)
+end
+```
+
+`freeSlots == 0` или `freeWeight == 0` используйте для отображения статистики. Решение о конкретной награде принимайте через `CanAddItem`, поскольку стак и вес самого предмета меняют результат.
+
+## Выдача, удаление и метаданные
+
+### AddItem и AddItemStrict
+
+Оба варианта вызываются на сервере. Порядок аргументов этой сборки:
+
+```lua
+AddItem(identifier, itemName, amount, slot, info, reason, allowDrop)
+AddItemStrict(identifier, itemName, amount, slot, info, reason)
+```
+
+`identifier` — ID игрока или существующее хранилище/сумка. `slot = false` / `nil` означает автоматический выбор. `info` дополняет значения из описания предмета. `amount` — положительное целое число; по умолчанию 1.
+
+| Вызов / результат | Значение |
+| --- | --- |
+| `true, 'inventory'` | Предмет добавлен в слоты. |
+| `true, 'dropped', networkId` | Обычная награда успешно создана в сумке у игрока. Повторная выдача не нужна. |
+| `false, 'weight'` | Не хватает веса при строгой выдаче или отключённом автодропе. |
+| `false, 'slots'` | Не хватает подходящих слотов/стака. |
+| `false, 'invalid_amount' / 'invalid_slot'` | Отказ планирования: например, несколько unique с одним номером либо неверный слот. |
+| `false` без второй причины | Ранняя проверка: неизвестный предмет, неверное количество или не найден игрок/контейнер. |
+| `false, 'drop_failed'` | Автоматическая выдача в сумку не удалась. Не подтверждайте получение награды. |
+
+`AddItem` при `AutoDropOnFull = true` пытается выдать награду в сумку только для игрока и только при нехватке веса/слотов. Для контейнеров такого автодропа нет. `allowDrop = false` отключает его для конкретного вызова; понятнее использовать `AddItemStrict`.
+
+```lua
+local inventory = exports['rsg-inventory']
+
+-- Награда с разрешённой выдачей в сумку при переполнении.
+local ok, destination, dropId = inventory:AddItem(
+    source, 'bread', 2, false, {}, 'quest reward'
+)
+if ok then
+    -- Только здесь подтверждайте награду в вашем квесте.
+    print('Доставлено:', destination, dropId)
+end
+
+-- Строгая выдача: отказ сохраняет исходный объект/товар в вашей логике.
+local added, reason = inventory:AddItemStrict(source, 'bread', 2, false, {}, 'harvest')
+```
+
+Не вызывайте `ForceDropItem` после успешного `AddItem`, иначе создадите ещё одну награду. `ForceDropItem` сам не списывает предмет из инвентаря и не является API ручного выброса существующего слота.
+
+### Удаление и изменение
+
+```lua
+local inventory = exports['rsg-inventory']
+
+-- Без слота: списание может затронуть несколько стаков.
+local removed = inventory:RemoveItem(source, 'bread', 5, false, 'recipe')
+-- Если суммарно меньше 5, ничего не будет списано.
+
+-- Со слотом: списание только из указанного слота.
+local removedFromSlot = inventory:RemoveItem(source, 'bread', 1, 7, 'use')
+
+-- Изменение info первого предмета с таким именем.
+local item = inventory:GetItemByName(source, 'bread')
+if item then
+    local info = {}
+    for key, value in pairs(item.info or {}) do info[key] = value end
+    info.batch = 'farm-12'
+    inventory:SetItemData(source, 'bread', 'info', info)
+end
+```
+
+`SetItemData` не позволяет менять `name` / `slot`. Для точного массового изменения используйте корректную таблицу по слотам и `SetInventory`; этот низкоуровневый API не проверяет каждую запись как новую выдачу. Не используйте прямое редактирование живых таблиц вместо штатного API.
+
+`ClearInventory(source)` удаляет всё. `filterItems` сохраняет найденный экземпляр указанного имени либо по одному найденному экземпляру каждого имени из списка. Это старое поведение: фильтр не гарантирует сохранение всех стаков одного имени.
+
+### Порча и уникальные предметы
+
+`decay` в описании предмета задаёт время потери 100% качества в минутах, `delete = true` — удаление при нулевом качестве. Начальные `quality` / `lastUpdate` дополняются автоматически. Сервер проверяет только портящиеся слоты, не чаще одного общего прохода по ним в секунду при запросах. Это не отдельная проверка всего инвентаря каждый кадр.
+
+Для `unique` количество 3 требует трёх свободных слотов и создаёт три независимых записи. Нельзя выдать несколько уникальных экземпляров одним вызовом с заранее заданным одинаковым `info.serie`: выдавайте такие экземпляры отдельно с разными номерами.
+
+## Хранилища и магазины
+
+### Хранилище
+
+Вызов делается после вашей серверной проверки доступа, владельца/профессии и дистанции:
+
+```lua
+local inventory = exports['rsg-inventory']
+local stashId = 'farm-tools-decay30'
+
+inventory:CreateInventory(stashId, {
+    label = 'Инструменты фермы', maxweight = 100000, slots = 30
+})
+inventory:OpenInventory(source, stashId, {
+    label = 'Инструменты фермы', maxweight = 100000, slots = 30
+})
+
+-- Серверная выдача в существующее хранилище.
+local ok = inventory:AddItemStrict(stashId, 'bread', 2, false, {}, 'restock')
+inventory:SaveStash(stashId)
+```
+
+Название с `citizenid` можно использовать для личного хранилища, но само имя не создаёт проверку прав. `OpenInventory`, `GetInventory` и сетевые обработчики не заменяют авторизацию ресурса домов/профессий. Подробности оставшихся ограничений доступа — в [AUDIT_RU.md](AUDIT_RU.md).
+
+`DeleteInventory` удаляет запись из памяти, не удаляет строку БД. `ClearStash` очищает содержимое и сохраняет пустую запись. Лимиты и label контейнеров задавайте при создании/открытии: SQL хранилищ сохраняет identifier и items.
+
+### Магазин
+
+```lua
+local inventory = exports['rsg-inventory']
+
+inventory:CreateShop({
+    name = 'farm-shop', label = 'Фермерская лавка',
+    coords = vector3(0.0, 0.0, 0.0), -- Замените на реальные координаты магазина.
+    persistentStock = true,
+    items = {
+        { name = 'bread', amount = 50, price = 2, buyPrice = 1, info = {} },
+        { name = 'water', amount = 40, price = 3 }
+    }
+})
+
+-- После серверной проверки доступности магазина:
+inventory:OpenShop(source, 'farm-shop')
+inventory:RestockShop('farm-shop', 25) -- Добавить 25% базового остатка, до его исходного максимума.
+local exists = inventory:DoesShopExist('farm-shop')
+```
+
+`price` — цена покупки игроком, `buyPrice` — базовая цена приёма предмета от игрока; итоговая выплата учитывает качество. `amount` задаёт ограниченный остаток, его отсутствие используется для неограниченного товара. `minQuality` ограничивает качество принимаемого товара, если задано в позиции. Сервер проверяет реальные предметы и списание; при отказе окончательного `AddItemStrict` после оплаты покупки деньги возвращаются.
+
+## Состояния предметов и события
+
+### Когда нужна регистрация
+
+`RegisterItemState` нужен для именованного условия и событий о его изменении. Он не нужен для кеширования обычных предметов или вызовов `HasItem`, `GetItemCount`, `CanAddItem`.
+
+```lua
+-- server.lua другого ресурса, один раз после запуска rsg-inventory.
+local inventory = exports['rsg-inventory']
+local registered, errorMessage = inventory:RegisterItemState('farm.hasSupplies', {
+    mode = 'requirements',
+    items = { bread = 3, water = 2 },
+    trackProgress = true
+})
+
+-- Для уже подключённых игроков первичное значение можно запросить явно.
+local ready = inventory:GetItemState(source, 'farm.hasSupplies')
+local progress = inventory:GetItemStateProgress(source, 'farm.hasSupplies')
+-- progress.bread.amount — текущее количество, а не требуемое.
+```
+
+Режимы: `any` — хотя бы одно имя из массива, `all` — все имена массива, `requirements` — количества из таблицы `имя = количество`. Без `trackProgress = true` прогресс не вычисляется/не рассылается и `GetItemStateProgress` возвращает `nil`.
+
+Имя правила уникально: повторная регистрация возвращает `false`. Вход игрока рассчитывает зарегистрированные состояния; поздняя регистрация сама не пересчитывает всех онлайн игроков. После перезапуска инвентаря потребитель должен зарегистрировать свои правила снова.
+
+```lua
+-- Сервер: подписка на изменения значения/прогресса.
+AddEventHandler('rsg-inventory:server:itemStateChanged', function(src, stateName, value, progress)
+    if stateName == 'farm.hasSupplies' then
+        print(src, value, progress and progress.bread.amount)
+    end
+end)
+
+-- Клиент: обновление вашего интерфейса, без серверного опроса каждый кадр.
+RegisterNetEvent('rsg-inventory:client:itemStateChanged', function(stateName, value, progress)
+    if stateName == 'farm.hasSupplies' then
+        -- Сохраните value/progress в состоянии своего интерфейса.
+    end
+end)
+```
+
+### События отдельных изменений
+
+| Событие | Аргументы |
+| --- | --- |
+| Сервер `rsg-inventory:server:itemChanged` | `source, itemName, payload` |
+| Клиент `rsg-inventory:client:itemChanged` | `itemName, payload` |
+| Сервер `rsg-inventory:server:inventoryChanged` | `source, payload` |
+| Клиент `rsg-inventory:client:inventoryChanged` | `payload` |
+| Сервер `rsg-inventory:server:itemRemovedFromPlayerInventory` | `source, itemName, data, reason, isMove` |
+
+`payload` отдельного изменения содержит `item`, итоговый `total`, действие `action` и доступные поля контекста: `amount`, `slot`, `reason`, `isMove`, `info`. Не каждое действие заполняет все поля. Массовые `SetInventory` / `ClearInventory` используют событие всего инвентаря. Предмет, выданный сразу в сумку, не увеличивает количество игрока.
+
+```lua
+AddEventHandler('rsg-inventory:server:itemChanged', function(src, itemName, payload)
+    if itemName == 'bread' then
+        print(('У игрока %s теперь %s хлеба'):format(src, payload.total))
+    end
+end)
+```
+
+Эти события относятся к операциям инвентаря. При прямом внешнем `RSGCore:SetPlayerData` индекс обновляется по событию ядра, но отдельное `itemChanged` для каждого затронутого имени не гарантируется. Для собственного клиентского кеша интерфейса можно дополнительно слушать `RSGCore:Player:SetPlayerData`; сама вместимость экспортом кешируется автоматически.
+
+## Справочник экспортов
+
+Все серверные вызовы ниже имеют префикс `exports['rsg-inventory']:`. `src` — ID игрока, `id` — ID игрока или существующего контейнера. `?` означает необязательный аргумент.
+
+### Клиент
+
+| Сигнатура | Результат |
+| --- | --- |
+| `HasItem(items, amount?, anyItem?)` | Локальная проверка наличия и суммы всех стаков. |
+| `GetItemCount(name)` | Локальное суммарное количество имени, 0 при отсутствии. |
+| `CanAddItem(name, amount?, info?)` | `true` либо `false, reason`; предварительная вместимость по синхронизированным данным. |
+| `GetInventoryStats()` | Снимок слотов/веса либо `nil`, если данные ещё не загружены. |
+
+У клиентских экспортов нет аргумента `source` и нет доступа к инвентарю другого игрока.
+
+### Сервер: поиск и вместимость
+
+| Сигнатура | Результат / назначение |
+| --- | --- |
+| `HasItem(src, items, amount?, anyItem?)` | Проверка строки, массива имён или таблицы требований. |
+| `GetItemCount(src, names)` | Количество имени либо сумма уникальных имён из массива. |
+| `GetItemAmountIndex(src, name)` | Быстрый одиночный счётчик, совместимый с прежними интеграциями. |
+| `GetItemByName(src, name)` | Первый предмет этого имени либо `nil`. |
+| `GetItemsByName(src, name)` | Список стаков нужного имени; игрок отсутствует — `nil`. |
+| `GetItemBySlot(src, slot)` | Предмет конкретного слота либо `nil`. |
+| `CanAddItem(id, name, amount?, info?)` | Проверка строгой вместимости без выдачи. |
+| `GetInventoryStats(src)` | `{ usedSlots, freeSlots, maxSlots, weight, freeWeight, maxWeight }` либо `nil`. |
+| `GetSlots(id)` | Два числа: занятые и свободные слоты. |
+| `GetFreeWeight(src)` | Остаток веса игрока. |
+| `GetItemWeight(name)` | Вес одной единицы из Shared.Items. |
+| `GetTotalWeight(items)` | Вес переданной таблицы. Для частых запросов веса игрока используйте `GetInventoryStats(src)` / `GetFreeWeight(src)`. |
+| `GetSlotsByItem(items, name)` | Слоты имени в произвольной таблице; выполняет перебор. |
+| `GetFirstSlotByItem(items, name)` | Первый найденный слот в произвольной таблице; выполняет перебор. |
+
+Для `CanAddItem` основные причины: `item` — неизвестное имя/неверное количество, `inventory` — нет контейнера/данных, `weight` — вес, `slots` — слоты, `invalid_amount` — несколько unique с одним заданным серийным номером. Проверка не резервирует место и не учитывает автоматическую сумку как свободный инвентарь.
+
+### Сервер: операции и сохранение
+
+| Сигнатура | Назначение |
+| --- | --- |
+| `AddItem(id, name, amount?, slot?, info?, reason?, allowDrop?)` | Выдача с возможным автодропом награды игроку. Результаты описаны выше. |
+| `AddItemStrict(id, name, amount?, slot?, info?, reason?)` | Выдача только в инвентарь; при отказе сумки нет. |
+| `RemoveItem(id, name, amount?, slot?, reason?, isMove?)` | Полное списание или `false`, без частичного списания при нехватке количества. |
+| `SetItemData(src, name, key, value)` | Изменение поля первого предмета, результат `true` / `false`. |
+| `SetInventory(src, items)` | Замена всего инвентаря игрока с пересборкой индекса и уведомлениями. |
+| `ClearInventory(src, filterItems?)` | Очистка; особенности фильтра описаны выше. |
+| `UseItem(name, ...)` | Вызов зарегистрированного обработчика usable-предмета с переданными аргументами. Сам по себе не универсальная выдача/списание. |
+| `ForceDropItem(src, name, amount?, info?, reason?)` | Создать новую награду в сумке: `networkId` / `false`. Не списывает из игрока. |
+| `LoadInventory(src, citizenid)` | Загрузить и вернуть таблицу предметов из БД; служебная интеграция RSG Core. |
+| `SaveInventory(srcOrPlayerData, offline?)` | Сохранить игрока в БД; при `offline = true` передаётся таблица PlayerData. |
+| `RebuildInventoryIndex(src)` | Вручную пересобрать серверный индекс: `true` / `false`. Обычно не нужен, клиент не синхронизирует. |
+
+`Player.Functions` содержит совместимые `AddItem`, `RemoveItem`, `HasItem`, `GetItemCount`, `CanAddItem`, `GetItemBySlot`, `GetItemByName`, `GetItemsByName`, `ClearInventory`, `SetInventory` без первого аргумента `source`. `AddItemStrict` вызывайте экспортом: отдельный метод игрока для него не добавлен.
+
+### Сервер: контейнеры, магазины и состояния
+
+| Сигнатура | Назначение |
+| --- | --- |
+| `OpenInventory(src, identifier?, data?)` | Открыть игроку его инвентарь либо хранилище. `data`: label, maxweight, slots, coords при инициализации. |
+| `CloseInventory(src, identifier?)` | Закрыть интерфейс и снять busy; для контейнера укажите identifier. |
+| `OpenInventoryById(src, targetId)` | Открыть инвентарь другого игрока после вашей серверной проверки прав. |
+| `CreateInventory(identifier, data)` | Создать контейнер в памяти или обновить его label/лимиты. |
+| `GetInventory(identifier)` | Контейнер из Inventories, с обработкой порчи; не универсальный getter PlayerData/Drops. |
+| `DeleteInventory(identifier)` | Удалить контейнер из памяти, `true` / `false`; БД не очищает. |
+| `ClearStash(identifier)` | Очистить и сохранить хранилище. |
+| `SaveStash(identifier)` | Сохранить items существующего хранилища в БД. |
+| `CreateShop(shopData)` | Зарегистрировать/обновить магазин или набор магазинов. |
+| `OpenShop(src, shopName)` | Открыть существующий магазин, с проверкой дистанции при наличии coords. |
+| `RestockShop(shopName, percentage?)` | Пополнить до исходного defaultstock, по умолчанию 100%. |
+| `DoesShopExist(shopName)` | Есть ли магазин в реестре. |
+| `RegisterItemState(stateName, rule)` | Зарегистрировать правило: `true` либо `false, сообщение`. |
+| `GetItemState(src, stateName)` | `boolean`, неизвестное правило — `nil`. Первый запрос может рассчитать значение. |
+| `GetItemStateProgress(src, stateName)` | Текущие количества по правилу; `nil` без trackProgress/правила. |
+
+## Кеширование, структура и проверки
+
+### До входа персонажа
+
+Файлы ресурса, NUI и экспорты однократно загружаются при подключении. Покадровые циклы клавиш и колеса, промпт сумки, запрос её списка и синхронизация колеса запускаются только после `RSGCore:Client:OnPlayerLoaded`. Отдельного цикла опроса «вошёл ли игрок» нет.
+
+При `OnPlayerUnload` игровые циклы завершаются, промпт удаляется, приглашение обмена скрывается. Номер сессии отменяет старые отложенные запросы, ожидание стриминга и действия после анимации. При перезапуске ресурса уже в игре состояние `LocalPlayer.state.isLoggedIn` позволяет запустить обработчики без повторного входа. Повторные события загрузки не создают дубликаты циклов.
+
+Однократная подготовка при старте и обработка событий могут отображаться в resmon; постоянная кадровая обработка инвентаря до загрузки персонажа не выполняется. Подробнее — [PERFORMANCE_RU.md](PERFORMANCE_RU.md).
+
+### Как устроен кеш
+
+Сервер автоматически строит `имя → слоты`, сумму количества каждого имени, первый слот, вес и число занятых слотов. Клиент также хранит суммы, вес, занятость, группы имён и результаты проверок стаков. Для добавления обычного имени в эти индексы не нужен `RegisterItemState`.
+
+Клиентские проверки используют локальный снимок PlayerData: получение из RSG Core выполняется при первом обращении/входе, дальнейшее обновление идёт через `RSGCore:Player:SetPlayerData`. `CanAddItem`, `HasItem` и `GetItemCount` не запрашивают полный PlayerData из ядра каждый кадр. Это существенно для проверки композитов при закрытом инвентаре. Межресурсные вызовы передают копии таблиц, поэтому ссылка на результат очередного `GetPlayerData` не служит признаком изменения инвентаря.
+
+Повторное чтение одного счётчика, веса или числа слотов не проходит по всему инвентарю. Запрос нескольких имён проходит только по этим именам. Получение всех стаков имени проходит по этой группе. Изменение/загрузка и полная синхронизация `PlayerData` могут пересобрать индекс одним проходом — это работа на обновлении, а не на каждом чтении. События ядра, даже вызванные другими полями PlayerData, также могут вызвать пересборку.
+
+Индекс не устраняет сетевой расход полной синхронизации RSG Core. Сторонний код должен использовать API инвентаря либо штатный `SetPlayerData` с синхронизацией. Если молча менять `PlayerData.items[slot].amount` внутри старой таблицы, кеш не может автоматически узнать о таком изменении. `RebuildInventoryIndex` восстанавливает только серверный индекс и не заменяет синхронизацию или события состояний.
+
+### Файлы
+
+| Путь | Содержимое |
+| --- | --- |
+| `shared/inventory_rules.lua` | Общие правила количества, копирования info и стаков клиента/сервера. |
+| `server/inventory_ops.lua` | Подготовка изменений без записи в живые слоты, вместимость предложений. |
+| `server/item_index.lua` | Серверные индексы, снимки слотов и ограниченная проверка decay. |
+| `client/session.lua` | Запуск и остановка клиентских задач по входу/выходу персонажа. |
+| `client/item_index.lua` | Локальный кеш и предварительная вместимость для промптов. |
+| `server/exports.lua`, `client/exports.lua` | API инвентаря. |
+| `server/item_states.lua` | Именованные условия, обратный индекс правил и прогресс. |
+| `server/events`, `client/ui` | Передачи, обмены и связь интерфейса с сервером. |
+| `server/drops`, `client/drops` | Сумки в мире, их создание и взаимодействие. |
+| `server/shops` | Магазины, цены, остатки и покупка/продажа. |
+| `client/inputwheel.lua`, `server/inputwheel.lua` | Синхронизация и использование предметов колеса. |
+| `shared/config.lua`, `shared/inputwheelconfig.lua` | Настройки инвентаря и колеса. |
+| `html`, `locales` | Ваш интерфейс, эффекты, изображения и переводы. |
+| `tests` | Проверки Lua-логики и вычислений формы обмена без RedM. |
+| `AUDIT_RU.md` | Разбор исходного дюпа, изменений и оставшихся ограничений. |
+| `PERFORMANCE_RU.md` | Исправление повторного копирования PlayerData, результаты теста и запись профиля при всплесках resmon. |
+
+Ключевые новые функции и изменённые участки снабжены русскими комментариями о назначении, порядке проверок и результатах.
+
+### Проверки и границы
+
+В этой поставке пройдены 80 Lua-сценариев (62 основных, 10 для клиентского выброса и 8 для жизненного цикла персонажа), включая 2000 случайных операций сохранения количества, клиентскую вместимость, совместимость метаданных и 10000 повторных клиентских проверок без перебора инвентаря. Отдельный тест имитирует сериализованные копии PlayerData: повторные чтения не вызывают повторных получений из ядра и пересборок индекса. Дополнительно клиентская вместимость сравнена с серверной на 100 сгенерированных инвентарях без decay. Проверены синтаксис Lua/JavaScript, существующая кнопка формы обмена и реальные сообщения NUI при полном/частичном переносе. Для переноса целого предмета допустим нулевой остаток исходного слота; количество списания проверяется по серверным данным.
+
+Запуск из папки ресурса требует Python, Node.js и совместимой библиотеки Lua 5.3/5.4:
+
+```powershell
+python tests/run.py --lua-library "C:\path\to\lua54.dll"
+```
+
+Тесты используют имитацию RSG Core, БД и сетевых функций. Они не заменяют проверку в RedM. В игре проверьте полные слоты со стаком и без него, полный вес, метаданные/decay, изменение инвентаря при открытом композите, отмену трейда и предметы колеса.
+
+Escrow трейда и сумки хранятся в памяти и не имеют восстановления после аварии. Старый swap между контейнерами и общая модель прав доступа требуют отдельной доработки; они не объявляются полностью транзакционными или защищёнными этим патчем. Перед штатным перезапуском завершайте активные обмены. Подробности — [AUDIT_RU.md](AUDIT_RU.md).
+
+
+## Для корректной работы показа часов в колесе вставьте эти предметы именно так как тут показано, имена имеют значение
+
+Настройки предметов для сопоставления с колесом находятся rsg-inventory\shared\inputwheelconfig.lua
+```lua
+    -----------------------------------------------
+    -- POCKET WATCHS
+    -----------------------------------------------
+	pocketwatch1      = { name = 'pocketwatch1',    label = 'Платиновые часы',                  weight = 125, type = 'item', image = 'provision_pocket_watch_platinum.png',       unique = true, useable = true, shouldClose = true, description = 'Платиновые карманные часы - ценная вещь!' },
+	pocketwatch2      = { name = 'pocketwatch2',    label = 'Серебрянные часы',                 weight = 125, type = 'item', image = 'provision_pocket_watch_silver.png',         unique = true, useable = true, shouldClose = true, description = 'Серебрянные карманные часы - ценная вещь!' },
+	pocketwatch3      = { name = 'pocketwatch3',    label = 'Золотые часы',                     weight = 125, type = 'item', image = 'provision_pocket_watch_gold.png',           unique = true, useable = true, shouldClose = true, description = 'Золотые карманные часы - ценная вещь!' },
+	pocketwatch4      = { name = 'pocketwatch4',    label = 'Старинные часы',                   weight = 125, type = 'item', image = 'provision_watch.png',                       unique = true, useable = true, shouldClose = true, description = 'Старинные часы - показывают время!' },
+	pocketwatch5      = { name = 'pocketwatch5',    label = 'Бронзовые часы',                   weight = 125, type = 'item', image = 'provision_watch.png',                       unique = true, useable = true, shouldClose = true, description = 'Бронзовые карманные часы - показывают время!' },
+	pocketwatch6      = { name = 'pocketwatch6',    label = 'Латунные часы',                    weight = 125, type = 'item', image = 'provision_watch.png',                       unique = true, useable = true, shouldClose = true, description = 'Латунные карманные часы - показывают время!' },
+	pocketwatch7      = { name = 'pocketwatch7',    label = 'Золотые часы(Reutlinger)',         weight = 125, type = 'item', image = 'provision_pocket_watch_reutlinge.png',      unique = true, useable = true, shouldClose = true, description = 'Уникальные золотые часы - ценная вещь!' },
+	pocketwatch8      = { name = 'pocketwatch8',    label = 'Золотые часы(Gleaming Brass)',     weight = 125, type = 'item', image = 'provision_pocket_watch_gleaming_brass.png', unique = true, useable = true, shouldClose = true, description = 'Золотые часы - ценная вещь!' },
+	pocketwatch9      = { name = 'pocketwatch9',    label = 'Старые часы',                      weight = 125, type = 'item', image = 'provision_rc_slvcatcher_watch.png',         unique = true, useable = true, shouldClose = true, description = 'Старые карманные часы.' },
+	pocketwatch10     = { name = 'pocketwatch10',	label = 'Сломанные часы',                   weight = 125, type = 'item', image = 'provision_rcm_pocket_watch.png',            unique = true, useable = true, shouldClose = true, description = 'Сломанные карманные часы.' },
+	compas1           = { name = 'compas1',    		label = 'Морской компас',                   weight = 100, type = 'item', image = 'provision_pearsons_naval_compass.png',      unique = true, useable = true, shouldClose = true, description = 'Морской карманный компас.' },
+	compas2           = { name = 'compas2',    		label = 'Латунный компас',                  weight = 100, type = 'item', image = 'provision_th_antique_brass_compass.png',    unique = true, useable = true, shouldClose = true, description = 'Старый латунный компас.' },
+```
+
+
+Основа: [Rexshack-RedM/rsg-inventory](https://github.com/Rexshack-RedM/rsg-inventory). Иконки: [FREE-RedM-Image-Library](https://github.com/TankieTwitch/FREE-RedM-Image-Library).

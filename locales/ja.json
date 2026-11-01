@@ -1,5 +1,9 @@
 {
   "error": {
+        "trade_recipient_full": "Recipient inventory full",
+        "trade_your_full": "Your inventory full",
+        "recipient_inventory_full": "The recipient inventory is full. Transfer cancelled.",
+        "your_inventory_full": "Your inventory is full. The items could not be received.",
     "error_already_holding_bag": "すでにバッグを持っています。先に置いてください",
     "error_gun_and_bag": "武器とバッグを同時に持つことはできません",
     "error": "エラー",

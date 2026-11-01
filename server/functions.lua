@@ -23,6 +23,8 @@ Inventory.InitializeInventory = function(inventoryId, data)
     return Inventories[inventoryId]
 end
 
+-- Находит предмет в игроке или контейнере напрямую по слоту.
+-- Перебор остаётся как совместимость со старыми таблицами, где ключ и item.slot различаются.
 Inventory.GetItem = function(inventoryId, src, slot)
     local items = {}
     if inventoryId == 'player' then
@@ -46,6 +48,8 @@ Inventory.GetItem = function(inventoryId, src, slot)
         end
     end
 
+    slot = tonumber(slot)
+    if items[slot] and items[slot].slot == slot then return items[slot] end
     for _, item in pairs(items) do
         if item.slot == slot then
             return item
@@ -109,7 +113,9 @@ end
 --- @return boolean shouldUpdate Whether the item metadata was updated.
 --- @return number|nil newQuality The new quality of the item after decay.
 --- @return boolean shouldDelete Whether the item should be deleted when quality reaches 0.
+-- Перед расчётом нормализует info: у старых предметов вместо таблицы могла быть строка.
 Inventory.CheckItemDecay = function(item, itemInfo, currentTime, decayRateModifier)
+    item.info = type(item.info) == 'table' and item.info or {}
     itemInfo = itemInfo or RSGCore.Shared.Items[item.name:lower()]
     currentTime = currentTime or os.time()
 
@@ -244,100 +250,13 @@ end
 
 
 
-Inventory.GetNameIndex = function(source)
-    return Inventory.PlayerNameIndexes[source]
-end
-
-Inventory.BuildNameIndex = function(source, items)
-    local index = {}
-
-    for slot, item in pairs(items or {}) do
-        if item and item.name then
-            local name = item.name:lower()
-            index[name] = index[name] or {}
-            index[name][slot] = item
-        end
-    end
-	
-	Inventory.PlayerNameIndexes[source] = index
-	return index
-end
-
---- Adds or updates an item reference in the player name index.
---- @param player table RSGCore player object
---- @param item table Item data
-Inventory.NameIndexAdd = function(source, item)
-    if not source or not item or not item.name or not item.slot then
-        return
-    end
-
-    local index = Inventory.PlayerNameIndexes[source]
-    if not index then
-        index = {}
-        Inventory.PlayerNameIndexes[source] = index
-    end
-
-    local name = item.name:lower()
-	index[name] = index[name] or {}
-    index[name][item.slot] = item
-end
-
---- Removes an item slot from the player name index.
---- @param player table RSGCore player object
---- @param itemName string Item name
---- @param slot number Item slot
-Inventory.NameIndexRemove = function(source, itemName, slot)
-    if not source or not itemName or not slot then
-        return
-    end
-
-    local index = Inventory.PlayerNameIndexes[source]
-    if not index then return end
-
-    local name = itemName:lower()
-    local itemsBySlot = index[name]
-
-    if not itemsBySlot then return end
-
-    itemsBySlot[tonumber(slot)] = nil
-
-    -- Удаляем ключ имени, если предметов этого типа больше нет
-    if not next(itemsBySlot) then
-        index[name] = nil
-    end
-end
-
---- Replaces the indexed reference after amount/info update.
---- Нужен для полной ясности, хотя при ссылке на ту же таблицу часто не обязателен.
---- @param player table RSGCore player object
---- @param item table Item data
-Inventory.NameIndexUpdate = function(source, item)
-    Inventory.NameIndexAdd(source, item)
-end
-
-
-AddEventHandler('playerDropped', function()
-    Inventory.PlayerNameIndexes[source] = nil
-end)
-
-
-
-
---На будущее для чека изменений в инвентаре
+-- Сообщает об успешном изменении одного имени; total уже посчитан индексом.
 Inventory.NotifyItemChanged = function(source, itemName, payload)
     if not source or not itemName then return end
     payload = payload or {}
     payload.item = tostring(itemName):lower()
 
-    local total = 0
-    local index = Inventory.GetNameIndex(source)
-    local stacks = index and index[payload.item]
-
-    if stacks then
-        for _, itemData in pairs(stacks) do
-            total = total + (tonumber(itemData.amount) or 0)
-        end
-    end
+    local total = Inventory.GetIndexedAmount(source, payload.item)
 
     payload.total = total
 
@@ -345,6 +264,8 @@ Inventory.NotifyItemChanged = function(source, itemName, payload)
     TriggerClientEvent('rsg-inventory:client:itemChanged', source, payload.item, payload)
 end
 
+-- Оповещает серверные и клиентские подписки о замене всего инвентаря.
+-- Вызывается после обновления PlayerData и индекса; payload содержит контекст изменения.
 Inventory.NotifyInventoryChanged = function(source, payload)
     if not source then return end
     payload = payload or {}

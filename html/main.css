@@ -1473,6 +1473,11 @@ button.player-side-button {
 	/*letter-spacing: 0.07vmin;*/
 }
 
+/* Жёлтым выделяется только предупреждение о вместимости при обмене. */
+.item-tradelabel.trade-capacity-warning {
+    color: #ffd54f;
+}
+
 .item-amount-quantity {
     display: flex;
     justify-content: space-between;

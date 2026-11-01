@@ -18,6 +18,8 @@ end
 ---This prevents opening while dead or handcuffed.
 ---@return boolean canUseInventory
 function Inventory.CanPlayerUseInventory()
+    -- На выборе персонажа не запрашиваем метаданные и не разрешаем открыть интерфейс.
+    if not InventorySession.IsActive() then return false end
     local player = RSGCore.Functions.GetPlayerData()
     if not player or not player.metadata then return false end
     local meta = player.metadata
@@ -29,6 +31,8 @@ end
 ---is not currently holding a dropped weapon (weapon on the ground).
 ---@param slot integer Hotbar slot (1-5)
 function Inventory.UseHotbarItem(slot)
+    -- Консольная команда слота также может прийти до входа, независимо от цикла клавиш.
+    if not InventorySession.IsActive() then return end
     local currentTime = GetGameTimer()
     local lastUsed    = LocalPlayer.state.hotbarLastUsed or 0
 

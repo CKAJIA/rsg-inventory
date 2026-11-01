@@ -16,9 +16,11 @@ end
 
 ---Fetches all current world drops from the server and adds a target interaction
 ---(`ox_target`) for each entity that still exists.
-function Drops.GetDrops()
+function Drops.GetDrops(session)
+    if not InventorySession.IsActive() then return end
+    session = session or InventorySession.GetGeneration()
     local drops = lib.callback.await('rsg-inventory:server:GetCurrentDrops', false)
-    if not drops then return end
+    if not drops or not InventorySession.IsCurrent(session) then return end
 
     for k, v in pairs(drops) do
         local bag = NetworkGetEntityFromNetworkId(v.entityId)
@@ -29,7 +31,9 @@ function Drops.GetDrops()
                     icon     = 'fas fa-backpack',
                     label    = locale('info.o_bag'),
                     distance = 2.5,
+                    canInteract = function() return InventorySession.IsActive() end,
                     onSelect = function()
+                        if not InventorySession.IsActive() then return end
                         TriggerServerEvent('rsg-inventory:server:openDrop', k)
                         LocalPlayer.state.currentDrop = k
                     end

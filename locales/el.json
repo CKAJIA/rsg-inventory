@@ -1,5 +1,9 @@
 {
   "error": {
+        "trade_recipient_full": "Recipient inventory full",
+        "trade_your_full": "Your inventory full",
+        "recipient_inventory_full": "The recipient inventory is full. Transfer cancelled.",
+        "your_inventory_full": "Your inventory is full. The items could not be received.",
     "error_already_holding_bag": "Κρατάτε ήδη μια τσάντα, βάλτε την πρώτα κάτω",
     "error_gun_and_bag": "Δεν μπορείτε να κρατάτε όπλο και τσάντα ταυτόχρονα",
     "error": "Σφάλμα",

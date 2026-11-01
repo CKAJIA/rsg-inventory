@@ -1,5 +1,9 @@
 {
   "error": {
+        "trade_recipient_full": "Recipient inventory full",
+        "trade_your_full": "Your inventory full",
+        "recipient_inventory_full": "The recipient inventory is full. Transfer cancelled.",
+        "your_inventory_full": "Your inventory is full. The items could not be received.",
     "error_already_holding_bag": "You are already holding a bag, put it away first",
     "error_gun_and_bag": "You cannot hold a gun and a bag at the same time",
     "error": "Error",
@@ -65,11 +69,11 @@
     "param_item": "Item name (not the label)",
     "param_amount": "Amount to give",
 	"loot_bag": "Loot bag",
-    "drop_bag": "Drop bag"
+    "drop_bag": "Drop bag",
 	"trade_max_slots": "You can only offer up to %s items",
 	"trade_cancelled": "Trade cancelled",
 	"already_trade": "You are already in a trade",
-	"other_already_trade": "That player is already in a trade",
+	"other_already_trade": "That player is already in a trade"
   },
    "ui": {
     "title": "RSG Inventory",
@@ -137,7 +141,7 @@
 		"collections": "Collections",
 		"horse": "Horse",
 		"sell": "Sellable",
-		"misc": "Misc",
+		"misc": "Misc"
 	}
   }
 }

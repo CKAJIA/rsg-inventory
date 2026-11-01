@@ -15,6 +15,7 @@ end
 --  - Player is alive
 --  - Player is not handcuffed
 local function canOpen()
+    if not InventorySession.IsActive() then return false end
     local meta = getMeta()
     return (not IsNuiFocused() and not IsPauseMenuActive())
         and (not meta.isdead and not meta.ishandcuffed)
@@ -23,6 +24,7 @@ end
 -- Displays an error notification if the player cannot open inventory/hotbar
 -- Reason shown depends on whether they are dead or cuffed
 local function openErrorNotify()
+    if not InventorySession.IsActive() then return end
     local meta = getMeta()
     if meta.isdead then
         lib.notify({

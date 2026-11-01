@@ -4,12 +4,15 @@ lib.locale()
 
 
 lib.callback.register('rsg-inventory:client:isInMelee', function()
+    if not InventorySession.IsActive() then return false end
     local ped = cache.ped
     return IsPedInMeleeCombat(ped)
 end)
 
--- Thread to using ox_target
-CreateThread(function()
+-- Регистрируем автоматы после первого входа, без повторов при смене персонажа.
+local vendingRegistered = false
+InventorySession.OnStart(function()
+    if vendingRegistered then return end
     local models = config.VendingObjects
     if not models or #models == 0 then return end -- exit if no vending models defined
 
@@ -17,15 +20,18 @@ CreateThread(function()
         label = locale('info.vending'),             -- label displayed in the target menu
         icon = 'fa-solid fa-cash-register',         -- icon for the interaction
         distance = 2.5,                             -- maximum distance to interact
+        canInteract = function() return InventorySession.IsActive() end,
         onSelect = function(data)                   -- function triggered when player selects the vending machine
+            if not InventorySession.IsActive() then return end
             data.coords = GetEntityCoords(data.entity) -- get the coords of the vending machine entity
             TriggerServerEvent('rsg-inventory:server:openVending', data) -- request the vending inventory from server
         end,
     })
+    vendingRegistered = true
 end)
 
--- Thread to handle keybinds for inventory and hotbar
-CreateThread(function()
+-- До входа обработчик клавиш вообще не создаётся. После выхода его сессия устаревает.
+InventorySession.OnStart(function(session)
     -- Mapping of keys to commands and whether the key is disabled (hold vs press)
     local commands = {
         [config.Keybinds.Open]             = { command = "inventory", disabled = false }, -- open inventory
@@ -38,8 +44,9 @@ CreateThread(function()
     }
 
     -- Main loop to check key inputs every frame
-    while true do
+    while InventorySession.IsCurrent(session) do
         Wait(0)
+        if not InventorySession.IsCurrent(session) then return end
         for control, meta in pairs(commands) do
             if meta.disabled then
                 -- If the key is disabled, prevent default behavior

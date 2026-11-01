@@ -397,6 +397,8 @@ end
 AddEventHandler('playerDropped', function()
     ItemStates.PlayerValues[source] = nil
 end)
+-- Очищаем состояния также при смене/выгрузке персонажа без отключения от сервера.
+AddEventHandler('RSGCore:Server:OnPlayerUnload', function(src) ItemStates.PlayerValues[src] = nil end)
 
 --[[
     Регистрация логического состояния.

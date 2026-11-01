@@ -5,17 +5,21 @@ ox_lib 'locale'
 lua54 'yes'
 
 description 'rsg-inventory'
-version '2.8.4'
+version '3.1.0'
 
 shared_scripts {
     '@ox_lib/init.lua',
+    'shared/inventory_rules.lua', -- Единые правила метаданных и количества для клиента и сервера.
     'shared/helpers.lua',
 }
 
 client_scripts {
+    'client/session.lua', -- Запуск игровых циклов только после входа персонажа.
+    'client/dataview.lua',
     'client/drops/functions.lua',
     'client/functions.lua',
     'client/commands.lua',
+    'client/item_index.lua', -- Кеш количества, веса и вместимости; загружается до HasItem.
     'client/exports.lua',
     'client/events.lua',
     'client/drops/events.lua',
@@ -27,11 +31,14 @@ client_scripts {
     'client/drops/ui/callbacks.lua',
     'client/main.lua',
     'client/drops/loops.lua',
+	'client/inputwheel.lua',
 }
 
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
     'server/functions.lua',
+    'server/inventory_ops.lua', -- Проверка и подготовка операций без изменения живых предметов.
+    'server/item_index.lua', -- Автоматические индексы всех предметов, веса и занятых слотов.
 	
 	'server/item_states.lua',
 	
@@ -43,6 +50,7 @@ server_scripts {
     'server/drops/events/*.lua',
     'server/shops/events/*.lua',
     'server/commands.lua',
+	'server/inputwheel.lua',
     'server/versionchecker.lua',
 }
 

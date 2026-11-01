@@ -9,18 +9,18 @@ RegisterNetEvent('rsg-inventory:server:closeInventory', function(inventory)
     local RSGPlayer = RSGCore.Functions.GetPlayer(src)
     if not RSGPlayer then return end
 
-    -- Mark player's inventory as no longer busy
+    -- Освобождаем флаг занятости инвентаря игрока.
     Player(src).state.inv_busy = false
 
-    -- Do nothing if it's a shop inventory
+    -- Для магазина закрытие контейнера не требуется.
     if inventory:find('shop-') then return end
 
-    -- Handle other player's inventory
+    -- Освобождаем просмотренный инвентарь другого игрока.
     if inventory:find('otherplayer-') then
         local targetId = tonumber(inventory:match('otherplayer%-(.+)'))
 --        Player(targetId).state.inv_busy = false
 
-        -- Only clear inv_busy if source is near the target (prevents forging otherplayer-<id>)
+        -- Снимаем чужой busy только рядом с целью, проверяя подставленный otherplayer-ID.
         local targetPed = GetPlayerPed(targetId)
         local srcPed = GetPlayerPed(src)
         if targetPed and DoesEntityExist(targetPed) and DoesEntityExist(srcPed) then
@@ -32,13 +32,13 @@ RegisterNetEvent('rsg-inventory:server:closeInventory', function(inventory)
         return
     end
 
-    -- Handle dropped item inventories
+    -- Закрываем сумку в игровом мире.
     if Drops[inventory] then
         Drops[inventory].isOpen = false
         if next(Drops[inventory].items) == nil and not Drops[inventory].isOpen then 
             TriggerClientEvent('rsg-inventory:client:removeDropTarget', -1, Drops[inventory].entityId)
             Wait(500)
-            -- Re-check state after yield (another player may have opened the drop)
+            -- После ожидания снова проверяем состояние: сумку мог открыть другой игрок.
             if not Drops[inventory] or Drops[inventory].isOpen then return end
             local entity = NetworkGetEntityFromNetworkId(Drops[inventory].entityId)
             if DoesEntityExist(entity) then DeleteEntity(entity) end
@@ -47,7 +47,7 @@ RegisterNetEvent('rsg-inventory:server:closeInventory', function(inventory)
         return
     end
 
-    -- Handle persistent inventories (like storage)
+    -- Сохраняем постоянное хранилище.
     if not Inventories[inventory] then return end
     Inventories[inventory].isOpen = false
     MySQL.prepare('INSERT INTO inventories (identifier, items) VALUES (?, ?) ON DUPLICATE KEY UPDATE items = ?', 
@@ -126,21 +126,25 @@ RegisterNetEvent('rsg-inventory:server:updateHotbar', function(identifier)
     TriggerClientEvent('rsg-inventory:client:updateHotbar', src, items)
 end)
 
--- Rate limiting for inventory move/split/swap
+-- Ограничиваем частые перемещения, разделение и обмен слотов.
 local setInventoryCooldowns = {}
 
 --[[ 
     Server Event: Move or swap items between inventories
     Handles stacking, splitting, moving, and swapping items between inventories
 --]]
+-- Проверяет типы, положительное целое количество, границы слотов и сторону игрока.
+-- При перемещениях используются строгие добавления без автоматических сумок;
+-- для объединения нужны совместимые метаданные, совпадения имени недостаточно.
 RegisterNetEvent('rsg-inventory:server:SetInventoryData', function(fromInventory, toInventory, fromSlot, toSlot, fromAmount, toAmount)
-    -- Rate limit per player (100ms)
+    -- Задержка между перемещениями одного игрока — 100 мс.
     local src = source
     local now = GetGameTimer()
     if setInventoryCooldowns[src] and now - setInventoryCooldowns[src] < 100 then return end
     setInventoryCooldowns[src] = now
 
-    -- Prevent moving items to shops
+    if type(fromInventory) ~= 'string' or type(toInventory) ~= 'string' then return end
+    -- Нельзя передавать предмет в магазин обычным перемещением.
     if toInventory:find('shop-') then return end
     if not fromInventory or not toInventory or not fromSlot or not toSlot or not fromAmount or not toAmount then return end
 
@@ -149,8 +153,15 @@ RegisterNetEvent('rsg-inventory:server:SetInventoryData', function(fromInventory
 
     local isMove = false
     fromSlot, toSlot, fromAmount, toAmount = tonumber(fromSlot), tonumber(toSlot), tonumber(fromAmount), tonumber(toAmount)
+    -- NUI присылает fromAmount как ОСТАТОК исходного стака после визуального переноса.
+    -- При переносе целого предмета он равен 0. Это допустимый остаток, а не количество выдачи.
+    -- Сам перенос toAmount остаётся положительным; доступное количество берём с сервера ниже.
+    local validRemainder = fromAmount == 0 or Inventory.ValidAmount(fromAmount)
+    if not Inventory.ValidAmount(fromSlot) or not Inventory.ValidAmount(toSlot)
+        or not validRemainder or not Inventory.ValidAmount(toAmount) then return end
+    if fromInventory ~= 'player' and toInventory ~= 'player' then return end
 
-    -- Auth: restrict access to other player inventories (must be dead/handcuffed, within 3.0)
+    -- Проверяем дистанцию и состояние цели для доступа к чужому инвентарю.
     local function getOtherPlayerId(inv)
         if inv:find('otherplayer-') then
             return tonumber(inv:match('otherplayer%-(.+)'))
@@ -186,7 +197,7 @@ RegisterNetEvent('rsg-inventory:server:SetInventoryData', function(fromInventory
         end
     end
 
-    -- Auth: restrict access to stashes with restricted prefixes
+    -- Применяем существующие ограничения хранилищ по префиксам.
     local restrictedPatterns = { '^police%-', '^marshal%-', '^gang%-', '^admin%-', '^evidence%-' }
     for _, invName in pairs({ fromInventory, toInventory }) do
         for _, pattern in ipairs(restrictedPatterns) do
@@ -213,8 +224,11 @@ RegisterNetEvent('rsg-inventory:server:SetInventoryData', function(fromInventory
     local fromId, fromType = Inventory.GetIdentifier(fromInventory, src)
     local toId, toType = Inventory.GetIdentifier(toInventory, src)
     if fromId ~= toId then isMove = true end
+    local fromItems, _, fromSlots = Inventory.GetContainerData(fromId)
+    local toItems, _, toSlots = Inventory.GetContainerData(toId)
+    if not fromItems or not toItems or fromSlot > fromSlots or toSlot > toSlots then return end
 
-    -- Distance check (except admin)
+    -- Проверяем дистанцию, кроме разрешённого административного доступа.
     if not RSGCore.Functions.HasPermission(src, 'admin') then
         local srcCoords = GetEntityCoords(GetPlayerPed(src))
         local maxDist = Inventory.MAX_DIST
@@ -236,22 +250,22 @@ RegisterNetEvent('rsg-inventory:server:SetInventoryData', function(fromInventory
     local toItem = Inventory.GetItem(toInventory, src, toSlot)
 
     if fromItem then
-        -- Prevent stacking more than available
+        -- Нельзя переместить больше, чем есть в исходном слоте.
         if not toItem and toAmount > fromItem.amount then return end
 
-        -- Special handling when moving weapons out of player's inventory
+        -- При передаче оружия убираем его активное представление у игрока.
         if fromInventory == 'player' and toInventory ~= 'player' then
             isMove = true
             Inventory.CheckWeapon(src, fromItem)
         end
 
-        -- Stack items if same type & quality
-        if toItem and fromItem.name == toItem.name and fromItem.info.quality == toItem.info.quality then
+        -- Объединяем только совместимые стаки: имя, unique и все значимые метаданные.
+        if toItem and Inventory.CanStackItem(toItem, fromItem.name, fromItem.info) then
             if toId ~= fromId then
-                if Inventory.CanAddItem(toId, fromItem.name, toAmount) then
+                if Inventory.CanAddItem(toId, fromItem.name, toAmount, fromItem.info) then
                     if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'stacked item', isMove) then
-                        if not Inventory.AddItem(toId, toItem.name, toAmount, toSlot, toItem.info, 'stacked item') then
-                            Inventory.AddItem(fromId, fromItem.name, toAmount, fromSlot, fromItem.info, 'rollback stacked item')
+                        if not Inventory.AddItemStrict(toId, toItem.name, toAmount, toSlot, toItem.info, 'stacked item') then
+                            Inventory.AddItemStrict(fromId, fromItem.name, toAmount, fromSlot, fromItem.info, 'rollback stacked item')
                         end
                     end
                 else
@@ -261,17 +275,18 @@ RegisterNetEvent('rsg-inventory:server:SetInventoryData', function(fromInventory
                 end
             else
                 if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'stacked item', isMove) then
-                    Inventory.AddItem(toId, toItem.name, toAmount, toSlot, toItem.info, 'stacked item')
+                    Inventory.AddItemStrict(toId, toItem.name, toAmount, toSlot, toItem.info, 'stacked item')
                 end
             end
 
-        -- Split items if moving part of the stack
-        elseif not toItem and toAmount < fromAmount then
+        -- Перемещаем только выбранную часть стака.
+        -- Сравниваем с настоящим исходным количеством, а не с остатком/подсказкой из NUI.
+        elseif not toItem and toAmount < fromItem.amount then
             if fromId ~= toId then
-                if Inventory.CanAddItem(toId, fromItem.name, toAmount) then
+                if Inventory.CanAddItem(toId, fromItem.name, toAmount, fromItem.info) then
                     if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'split item', isMove) then
-                        if not Inventory.AddItem(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'split item') then
-                            Inventory.AddItem(fromId, fromItem.name, toAmount, fromSlot, fromItem.info, 'rollback split item')
+                        if not Inventory.AddItemStrict(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'split item') then
+                            Inventory.AddItemStrict(fromId, fromItem.name, toAmount, fromSlot, fromItem.info, 'rollback split item')
                         end
                     end
                 else
@@ -281,19 +296,19 @@ RegisterNetEvent('rsg-inventory:server:SetInventoryData', function(fromInventory
                 end
             else
                 if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'split item', isMove) then
-                    Inventory.AddItem(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'split item')
+                    Inventory.AddItemStrict(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'split item')
                 end
             end
 
-        -- Swap items between slots
+        -- Меняем предметы местами; здесь сохраняется прежняя последовательность remove/add.
         else
             if toItem then
                 local fromItemAmount = fromItem.amount
                 local toItemAmount = toItem.amount
 
                 if toId ~= fromId then
-                    local addSuccessFrom = Inventory.CanAddItem(toId, fromItem.name, fromItemAmount)
-                    local addSuccessTo = Inventory.CanAddItem(fromId, toItem.name, toItemAmount)
+                    local addSuccessFrom = Inventory.CanAddItem(toId, fromItem.name, fromItemAmount, fromItem.info)
+                    local addSuccessTo = Inventory.CanAddItem(fromId, toItem.name, toItemAmount, toItem.info)
 
                     if not addSuccessFrom or not addSuccessTo then
                         Inventory.SaveStash(fromId)
@@ -304,42 +319,42 @@ RegisterNetEvent('rsg-inventory:server:SetInventoryData', function(fromInventory
                     if addSuccessFrom and addSuccessTo then
                         if Inventory.RemoveItem(fromId, fromItem.name, fromItemAmount, fromSlot, 'swapped item', isMove) and
                            Inventory.RemoveItem(toId, toItem.name, toItemAmount, toSlot, 'swapped item', isMove) then
-                            if not Inventory.AddItem(toId, fromItem.name, fromItemAmount, toSlot, fromItem.info, 'swapped item') then
-                                Inventory.AddItem(fromId, fromItem.name, fromItemAmount, fromSlot, fromItem.info, 'swap rollback')
-                                Inventory.AddItem(toId, toItem.name, toItemAmount, toSlot, toItem.info, 'swap rollback')
-                            elseif not Inventory.AddItem(fromId, toItem.name, toItemAmount, fromSlot, toItem.info, 'swapped item') then
+                            if not Inventory.AddItemStrict(toId, fromItem.name, fromItemAmount, toSlot, fromItem.info, 'swapped item') then
+                                Inventory.AddItemStrict(fromId, fromItem.name, fromItemAmount, fromSlot, fromItem.info, 'swap rollback')
+                                Inventory.AddItemStrict(toId, toItem.name, toItemAmount, toSlot, toItem.info, 'swap rollback')
+                            elseif not Inventory.AddItemStrict(fromId, toItem.name, toItemAmount, fromSlot, toItem.info, 'swapped item') then
                                 Inventory.RemoveItem(toId, fromItem.name, fromItemAmount, toSlot, 'swap rollback', true)
-                                Inventory.AddItem(fromId, fromItem.name, fromItemAmount, fromSlot, fromItem.info, 'swap rollback')
-                                Inventory.AddItem(toId, toItem.name, toItemAmount, toSlot, toItem.info, 'swap rollback')
+                                Inventory.AddItemStrict(fromId, fromItem.name, fromItemAmount, fromSlot, fromItem.info, 'swap rollback')
+                                Inventory.AddItemStrict(toId, toItem.name, toItemAmount, toSlot, toItem.info, 'swap rollback')
                             end
                         end
                     end
                 else
                     if Inventory.RemoveItem(fromId, fromItem.name, fromItemAmount, fromSlot, 'swapped item', isMove) and
                        Inventory.RemoveItem(toId, toItem.name, toItemAmount, toSlot, 'swapped item', isMove) then
-                        Inventory.AddItem(toId, fromItem.name, fromItemAmount, toSlot, fromItem.info, 'swapped item')
-                        Inventory.AddItem(fromId, toItem.name, toItemAmount, fromSlot, toItem.info, 'swapped item')
+                        Inventory.AddItemStrict(toId, fromItem.name, fromItemAmount, toSlot, fromItem.info, 'swapped item')
+                        Inventory.AddItemStrict(fromId, toItem.name, toItemAmount, fromSlot, toItem.info, 'swapped item')
                     end
                 end
 
-            -- Move items to empty slots
+            -- Перемещаем предмет в пустой слот.
             else
                 if toId ~= fromId then
                     local fromItemAmount = fromItem.amount
-                    if not Inventory.CanAddItem(toId, fromItem.name, fromItemAmount) then
+                    if not Inventory.CanAddItem(toId, fromItem.name, fromItemAmount, fromItem.info) then
                         Inventory.SaveStash(fromId)
                         Inventory.CloseInventory(src, fromId)
                         Inventory.CloseInventory(src, toId)
                     else
                         if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'moved item', isMove) then
-                            if not Inventory.AddItem(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'moved item') then
-                                Inventory.AddItem(fromId, fromItem.name, toAmount, fromSlot, fromItem.info, 'rollback moved item')
+                            if not Inventory.AddItemStrict(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'moved item') then
+                                Inventory.AddItemStrict(fromId, fromItem.name, toAmount, fromSlot, fromItem.info, 'rollback moved item')
                             end
                         end
                     end
                 else
                     if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'moved item', isMove) then
-                        Inventory.AddItem(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'moved item')
+                        Inventory.AddItemStrict(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'moved item')
                     end
                 end
             end

@@ -19,6 +19,7 @@ function hideTradeInvite()
 end
 
 local function showTradeInvite(initiatorId, initiatorName)
+    if not InventorySession.IsActive() then return end
     tradeInviteActive = true
     tradeInviteInitiatorId = initiatorId
 
@@ -73,6 +74,7 @@ RegisterNetEvent('rsg-inventory:client:tradeRequestCancelled', function()
 end)
 --]]
 RegisterNetEvent('rsg-inventory:client:openTrade', function(tradeId, partnerId, partnerName, items, partnerData)
+    if not InventorySession.IsActive() then return end
 	hideTradeInvite()
 	
     local token = exports['rsg-core']:GenerateCSRFToken()
@@ -106,6 +108,7 @@ RegisterNetEvent('rsg-inventory:client:openTrade', function(tradeId, partnerId, 
 end)
 
 RegisterNetEvent('rsg-inventory:client:updateTrade', function(tradeData)
+    if not InventorySession.IsActive() then return end
 
     local token = exports['rsg-core']:GenerateCSRFToken()
     local invToken = GenerateInventoryCbToken()
@@ -139,10 +142,12 @@ RegisterNetEvent('rsg-inventory:client:completeTrade', function()
     })
 end)
 
-CreateThread(function()
-    while true do
+-- Обработчик приглашения отсутствует до входа и завершает работу при выходе.
+InventorySession.OnStart(function(session)
+    while InventorySession.IsCurrent(session) do
         if tradeInviteActive and tradeInviteInitiatorId then
             Wait(0)
+            if not InventorySession.IsCurrent(session) then return end
 
             DisableControlAction(0, `INPUT_FRONTEND_PAUSE_ALTERNATE`, true)
             DisableControlAction(0, `INPUT_FRONTEND_ACCEPT`, true)
@@ -164,7 +169,6 @@ CreateThread(function()
     end
 end)
 
-AddEventHandler('onResourceStop', function(resourceName)
-    if GetCurrentResourceName() ~= resourceName then return end
-
+InventorySession.OnStop(function()
+    if tradeInviteActive then hideTradeInvite() end
 end)

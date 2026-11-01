@@ -60,6 +60,15 @@ const InventoryContainer = Vue.createApp({
         return this.getInitialState();		
     },
     computed: {
+        // Сервер проверяет всё предложение: кнопка недоступна до ответа и при переполнении любой стороны.
+        tradeCapacityBlocked() {
+            return !this.tradeCapacity || !this.tradeCapacity.initiatorCanReceive || !this.tradeCapacity.targetCanReceive;
+        },
+        // Показывает причину с точки зрения текущего участника в существующей области формы.
+        tradeCapacityMessage() {
+            if (!this.tradeCapacity) return '';
+            return this.tradeIsInitiator ? this.tradeCapacity.initiatorMessage : this.tradeCapacity.targetMessage;
+        },
 		
 		resolvedPlayerEffects() {
 			return this.resolveItemEffects(this.selectedPlayerItemInfo)
@@ -604,6 +613,9 @@ const InventoryContainer = Vue.createApp({
 				
                 // -------- Trade state --------
                 tradeId: null,
+                // Вместимость приходит с сервера; null блокирует подтверждение до проверки.
+                tradeCapacity: null,
+                tradeIsInitiator: false,
                 tradePartner: null,
                 tradePartnerName: null,
                 myTradeOffers: {},
@@ -2804,6 +2816,7 @@ const InventoryContainer = Vue.createApp({
                 }
             }
 
+            this.tradeCapacity = null;
             this.tradeId = data.tradeId;
             this.tradePartner = data.partnerId;
             this.tradePartnerName = data.partnerName;
@@ -2823,6 +2836,9 @@ const InventoryContainer = Vue.createApp({
             const tradeData = data.tradeData;
             const myId = Number(this.playerId);
             const isInitiator = Number(tradeData.initiator) === myId;
+            this.tradeIsInitiator = isInitiator;
+            // Обновляем блокировку и сообщение по серверной версии предложения.
+            this.tradeCapacity = tradeData.capacity || null;
             this.myTradeAccepted = isInitiator ? tradeData.initiatorAccepted : tradeData.targetAccepted;
             this.theirTradeAccepted = isInitiator ? tradeData.targetAccepted : tradeData.initiatorAccepted;
             this.myTradeOffers = isInitiator ? tradeData.initiatorItems : tradeData.targetItems;
@@ -2835,6 +2851,9 @@ const InventoryContainer = Vue.createApp({
 			const tradeData = data.tradeData;
 			const myId = Number(this.playerId);
 			const isInitiator = Number(tradeData.initiator) === myId;
+            this.tradeIsInitiator = isInitiator;
+            // Обновляем блокировку и сообщение по серверной версии предложения.
+            this.tradeCapacity = tradeData.capacity || null;
 		
 			this.myTradeAccepted = isInitiator ? tradeData.initiatorAccepted : tradeData.targetAccepted;
 			this.theirTradeAccepted = isInitiator ? tradeData.targetAccepted : tradeData.initiatorAccepted;
@@ -2947,8 +2966,9 @@ const InventoryContainer = Vue.createApp({
                 console.error("Error removing item from trade:", error);
             });
         },
+        // Локальный запрет повторяет состояние кнопки; окончательное разрешение всегда проверяет сервер.
         confirmTrade() {
-            if (!this.isTradeActive || !this.tradeId) return;
+            if (!this.isTradeActive || !this.tradeId || this.tradeCapacityBlocked) return;
             axios.post("https://rsg-inventory/ConfirmTrade", {
                 tradeId: this.tradeId,
             }).catch((error) => {
