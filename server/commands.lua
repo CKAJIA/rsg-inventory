@@ -65,15 +65,7 @@ lib.addCommand(config.CommandNames.GiveItem, {
     -- Specific info for weapons
     elseif itemData.type == 'weapon' then
         amount = 1
-        info.serie = string.format(
-            "%s%s%s%s%s%s",
-            RSGCore.Shared.RandomInt(2),
-            RSGCore.Shared.RandomStr(3),
-            RSGCore.Shared.RandomInt(1),
-            RSGCore.Shared.RandomStr(2),
-            RSGCore.Shared.RandomInt(3),
-            RSGCore.Shared.RandomStr(4)
-        )
+        info.serie = InventoryRules.GenerateWeaponSerial()
         info.quality = 100
     end
  if addItemToInventory(args.target, itemData, amount, info, 'give item command') then

@@ -273,3 +273,38 @@ Inventory.NotifyInventoryChanged = function(source, payload)
     TriggerEvent('rsg-inventory:server:inventoryChanged', source, payload)
     TriggerClientEvent('rsg-inventory:client:inventoryChanged', source, payload)
 end
+
+-- Список ограниченных хранилищ по префиксу identifier.
+-- Используется и в SetInventoryData (перемещение предметов), и в openStash (открытие).
+Inventory.RESTRICTED_STASH_PATTERNS = {
+    { pattern = '^police%-',   type = 'police'   },
+    { pattern = '^marshal%-',  type = 'marshal'  },
+    { pattern = '^gang%-',     type = 'gang'     },
+    { pattern = '^admin%-',    type = 'admin'    },
+    { pattern = '^evidence%-', type = 'evidence' },
+}
+
+-- Возвращает тип ограниченного хранилища по его identifier, либо nil, если оно не ограничено.
+function Inventory.GetRestrictedStashType(identifier)
+    for _, entry in ipairs(Inventory.RESTRICTED_STASH_PATTERNS) do
+        if identifier:match(entry.pattern) then
+            return entry.type
+        end
+    end
+    return nil
+end
+
+-- Проверяет доступ игрока к хранилищу данного ограниченного типа.
+-- stashType == nil (хранилище не ограничено) никогда не вызывается отдельно — проверяется на месте вызова.
+function Inventory.HasStashAccess(src, identifier, Player, stashType)
+    if stashType == 'police' or stashType == 'marshal' then
+        return RSGCore.Functions.HasPermission(src, 'police')
+            or Player.PlayerData.job.name == 'police'
+            or Player.PlayerData.job.name == 'marshal'
+    elseif stashType == 'gang' then
+        local gangName = identifier:match('gang%-(.+)%-')
+        return Player.PlayerData.gang and Player.PlayerData.gang.name == gangName
+    end
+    -- admin и evidence используют одинаковую проверку, как и раньше (else-ветка в обоих местах).
+    return RSGCore.Functions.HasPermission(src, 'admin')
+end

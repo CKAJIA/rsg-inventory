@@ -69,9 +69,7 @@ function Inventory.PlanAddItem(items, maxWeight, maxSlots, name, amount, slot, i
         if not target then return nil, 'slots' end
         local metadata = Inventory.CopyItemData(info)
         if definition.type == 'weapon' then
-            metadata.serie = metadata.serie or tostring(RSGCore.Shared.RandomInt(2) .. RSGCore.Shared.RandomStr(3)
-                .. RSGCore.Shared.RandomInt(1) .. RSGCore.Shared.RandomStr(2)
-                .. RSGCore.Shared.RandomInt(3) .. RSGCore.Shared.RandomStr(4))
+            metadata.serie = metadata.serie or InventoryRules.GenerateWeaponSerial()
             metadata.quality = metadata.quality or 100
         end
         plan[target] = {
@@ -149,4 +147,108 @@ function Inventory.NotifyTransferFull(sender, recipient, reason)
         title = locale('ui.trade'), type = 'error', duration = 5000,
         description = locale('error.your_inventory_full')
     })
+end
+
+-- Объединяет fromItem с совместимым toItem (стакинг). Для разных контейнеров сначала
+-- проверяет вместимость получателя на toAmount; при отказе — SaveStash + закрытие обоих инвентарей.
+-- При неудачной выдаче в toId откатывает списание обратно в fromId.
+function Inventory.TryStackItems(src, fromId, toId, fromSlot, toSlot, fromItem, toItem, toAmount, isMove)
+    if fromId ~= toId then
+        if not Inventory.CanAddItem(toId, fromItem.name, toAmount, fromItem.info) then
+            Inventory.SaveStash(fromId)
+            Inventory.CloseInventory(src, fromId)
+            Inventory.CloseInventory(src, toId)
+            return
+        end
+        if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'stacked item', isMove) then
+            if not Inventory.AddItemStrict(toId, toItem.name, toAmount, toSlot, toItem.info, 'stacked item') then
+                Inventory.AddItemStrict(fromId, fromItem.name, toAmount, fromSlot, fromItem.info, 'rollback stacked item')
+            end
+        end
+    else
+        if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'stacked item', isMove) then
+            Inventory.AddItemStrict(toId, toItem.name, toAmount, toSlot, toItem.info, 'stacked item')
+        end
+    end
+end
+
+-- Переносит часть стака (toAmount < fromItem.amount) в пустой целевой слот (разделение).
+function Inventory.TrySplitItem(src, fromId, toId, fromSlot, toSlot, fromItem, toAmount, isMove)
+    if fromId ~= toId then
+        if not Inventory.CanAddItem(toId, fromItem.name, toAmount, fromItem.info) then
+            Inventory.SaveStash(fromId)
+            Inventory.CloseInventory(src, fromId)
+            Inventory.CloseInventory(src, toId)
+            return
+        end
+        if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'split item', isMove) then
+            if not Inventory.AddItemStrict(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'split item') then
+                Inventory.AddItemStrict(fromId, fromItem.name, toAmount, fromSlot, fromItem.info, 'rollback split item')
+            end
+        end
+    else
+        if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'split item', isMove) then
+            Inventory.AddItemStrict(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'split item')
+        end
+    end
+end
+
+-- Меняет местами два разных (или несовместимых для стака) предмета в двух занятых слотах.
+-- Неудача любой из двух выдач откатывает оба предмета на исходные места.
+function Inventory.TrySwapItems(src, fromId, toId, fromSlot, toSlot, fromItem, toItem, isMove)
+    local fromItemAmount = fromItem.amount
+    local toItemAmount = toItem.amount
+
+    if fromId ~= toId then
+        local addSuccessFrom = Inventory.CanAddItem(toId, fromItem.name, fromItemAmount, fromItem.info)
+        local addSuccessTo = Inventory.CanAddItem(fromId, toItem.name, toItemAmount, toItem.info)
+
+        if not addSuccessFrom or not addSuccessTo then
+            Inventory.SaveStash(fromId)
+            Inventory.CloseInventory(src, fromId)
+            Inventory.CloseInventory(src, toId)
+            return
+        end
+
+        if Inventory.RemoveItem(fromId, fromItem.name, fromItemAmount, fromSlot, 'swapped item', isMove) and
+           Inventory.RemoveItem(toId, toItem.name, toItemAmount, toSlot, 'swapped item', isMove) then
+            if not Inventory.AddItemStrict(toId, fromItem.name, fromItemAmount, toSlot, fromItem.info, 'swapped item') then
+                Inventory.AddItemStrict(fromId, fromItem.name, fromItemAmount, fromSlot, fromItem.info, 'swap rollback')
+                Inventory.AddItemStrict(toId, toItem.name, toItemAmount, toSlot, toItem.info, 'swap rollback')
+            elseif not Inventory.AddItemStrict(fromId, toItem.name, toItemAmount, fromSlot, toItem.info, 'swapped item') then
+                Inventory.RemoveItem(toId, fromItem.name, fromItemAmount, toSlot, 'swap rollback', true)
+                Inventory.AddItemStrict(fromId, fromItem.name, fromItemAmount, fromSlot, fromItem.info, 'swap rollback')
+                Inventory.AddItemStrict(toId, toItem.name, toItemAmount, toSlot, toItem.info, 'swap rollback')
+            end
+        end
+    else
+        if Inventory.RemoveItem(fromId, fromItem.name, fromItemAmount, fromSlot, 'swapped item', isMove) and
+           Inventory.RemoveItem(toId, toItem.name, toItemAmount, toSlot, 'swapped item', isMove) then
+            Inventory.AddItemStrict(toId, fromItem.name, fromItemAmount, toSlot, fromItem.info, 'swapped item')
+            Inventory.AddItemStrict(fromId, toItem.name, toItemAmount, fromSlot, toItem.info, 'swapped item')
+        end
+    end
+end
+
+-- Переносит предмет в пустой целевой слот.
+-- ВНИМАНИЕ: CanAddItem здесь проверяет fromItem.amount (полный стак), а не toAmount —
+-- так было в оригинале; сохранено намеренно, чтобы не менять поведение.
+function Inventory.TryMoveItem(src, fromId, toId, fromSlot, toSlot, fromItem, toAmount, isMove)
+    if fromId ~= toId then
+        if not Inventory.CanAddItem(toId, fromItem.name, fromItem.amount, fromItem.info) then
+            Inventory.SaveStash(fromId)
+            Inventory.CloseInventory(src, fromId)
+            Inventory.CloseInventory(src, toId)
+            return
+        end
+        if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'moved item', isMove) then
+            if not Inventory.AddItemStrict(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'moved item') then
+                Inventory.AddItemStrict(fromId, fromItem.name, toAmount, fromSlot, fromItem.info, 'rollback moved item')
+            end
+        end
+    else
+        if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'moved item', isMove) then
+            Inventory.AddItemStrict(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'moved item')
+        end
+    end
 end

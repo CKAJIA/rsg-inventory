@@ -197,27 +197,13 @@ RegisterNetEvent('rsg-inventory:server:SetInventoryData', function(fromInventory
         end
     end
 
-    -- Применяем существующие ограничения хранилищ по префиксам.
-    local restrictedPatterns = { '^police%-', '^marshal%-', '^gang%-', '^admin%-', '^evidence%-' }
+	-- Применяем существующие ограничения хранилищ по префиксам (общая проверка в server/functions.lua).
     for _, invName in pairs({ fromInventory, toInventory }) do
-        for _, pattern in ipairs(restrictedPatterns) do
-            if invName:match(pattern) then
-                local stashType = pattern:gsub('[%-^]', ''):gsub('%-', '')
-                local hasAccess = false
-                if stashType == 'police' or stashType == 'marshal' then
-                    hasAccess = RSGCore.Functions.HasPermission(src, 'police') or Player.PlayerData.job.name == 'police' or Player.PlayerData.job.name == 'marshal'
-                elseif stashType == 'gang' then
-                    local gangName = invName:match('gang%-(.+)%-')
-                    hasAccess = Player.PlayerData.gang and Player.PlayerData.gang.name == gangName
-                else
-                    hasAccess = RSGCore.Functions.HasPermission(src, 'admin')
-                end
-                if not hasAccess then
-                    Inventory.CloseInventory(src, invName)
-                    TriggerClientEvent('ox_lib:notify', src, { title = 'Access Denied', description = 'No permission', type = 'error', duration = 5000 })
-                    return
-                end
-            end
+        local stashType = Inventory.GetRestrictedStashType(invName)
+        if stashType and not Inventory.HasStashAccess(src, invName, Player, stashType) then
+            Inventory.CloseInventory(src, invName)
+            TriggerClientEvent('ox_lib:notify', src, { title = 'Access Denied', description = 'No permission', type = 'error', duration = 5000 })
+            return
         end
     end
 
@@ -261,106 +247,20 @@ RegisterNetEvent('rsg-inventory:server:SetInventoryData', function(fromInventory
 
         -- Объединяем только совместимые стаки: имя, unique и все значимые метаданные.
         if toItem and Inventory.CanStackItem(toItem, fromItem.name, fromItem.info) then
-            if toId ~= fromId then
-                if Inventory.CanAddItem(toId, fromItem.name, toAmount, fromItem.info) then
-                    if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'stacked item', isMove) then
-                        if not Inventory.AddItemStrict(toId, toItem.name, toAmount, toSlot, toItem.info, 'stacked item') then
-                            Inventory.AddItemStrict(fromId, fromItem.name, toAmount, fromSlot, fromItem.info, 'rollback stacked item')
-                        end
-                    end
-                else
-                    Inventory.SaveStash(fromId)
-                    Inventory.CloseInventory(src, fromId)
-                    Inventory.CloseInventory(src, toId)
-                end
-            else
-                if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'stacked item', isMove) then
-                    Inventory.AddItemStrict(toId, toItem.name, toAmount, toSlot, toItem.info, 'stacked item')
-                end
-            end
-
+            Inventory.TryStackItems(src, fromId, toId, fromSlot, toSlot, fromItem, toItem, toAmount, isMove)
         -- Перемещаем только выбранную часть стака.
-        -- Сравниваем с настоящим исходным количеством, а не с остатком/подсказкой из NUI.
         elseif not toItem and toAmount < fromItem.amount then
-            if fromId ~= toId then
-                if Inventory.CanAddItem(toId, fromItem.name, toAmount, fromItem.info) then
-                    if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'split item', isMove) then
-                        if not Inventory.AddItemStrict(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'split item') then
-                            Inventory.AddItemStrict(fromId, fromItem.name, toAmount, fromSlot, fromItem.info, 'rollback split item')
-                        end
-                    end
-                else
-                    Inventory.SaveStash(fromId)
-                    Inventory.CloseInventory(src, fromId)
-                    Inventory.CloseInventory(src, toId)
-                end
-            else
-                if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'split item', isMove) then
-                    Inventory.AddItemStrict(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'split item')
-                end
-            end
-
-        -- Меняем предметы местами; здесь сохраняется прежняя последовательность remove/add.
+            Inventory.TrySplitItem(src, fromId, toId, fromSlot, toSlot, fromItem, toAmount, isMove)
+        -- Меняем предметы местами.
+        elseif toItem then
+            Inventory.TrySwapItems(src, fromId, toId, fromSlot, toSlot, fromItem, toItem, isMove)
+        -- Перемещаем предмет в пустой слот.
         else
-            if toItem then
-                local fromItemAmount = fromItem.amount
-                local toItemAmount = toItem.amount
-
-                if toId ~= fromId then
-                    local addSuccessFrom = Inventory.CanAddItem(toId, fromItem.name, fromItemAmount, fromItem.info)
-                    local addSuccessTo = Inventory.CanAddItem(fromId, toItem.name, toItemAmount, toItem.info)
-
-                    if not addSuccessFrom or not addSuccessTo then
-                        Inventory.SaveStash(fromId)
-                        Inventory.CloseInventory(src, fromId)
-                        Inventory.CloseInventory(src, toId)
-                    end
-
-                    if addSuccessFrom and addSuccessTo then
-                        if Inventory.RemoveItem(fromId, fromItem.name, fromItemAmount, fromSlot, 'swapped item', isMove) and
-                           Inventory.RemoveItem(toId, toItem.name, toItemAmount, toSlot, 'swapped item', isMove) then
-                            if not Inventory.AddItemStrict(toId, fromItem.name, fromItemAmount, toSlot, fromItem.info, 'swapped item') then
-                                Inventory.AddItemStrict(fromId, fromItem.name, fromItemAmount, fromSlot, fromItem.info, 'swap rollback')
-                                Inventory.AddItemStrict(toId, toItem.name, toItemAmount, toSlot, toItem.info, 'swap rollback')
-                            elseif not Inventory.AddItemStrict(fromId, toItem.name, toItemAmount, fromSlot, toItem.info, 'swapped item') then
-                                Inventory.RemoveItem(toId, fromItem.name, fromItemAmount, toSlot, 'swap rollback', true)
-                                Inventory.AddItemStrict(fromId, fromItem.name, fromItemAmount, fromSlot, fromItem.info, 'swap rollback')
-                                Inventory.AddItemStrict(toId, toItem.name, toItemAmount, toSlot, toItem.info, 'swap rollback')
-                            end
-                        end
-                    end
-                else
-                    if Inventory.RemoveItem(fromId, fromItem.name, fromItemAmount, fromSlot, 'swapped item', isMove) and
-                       Inventory.RemoveItem(toId, toItem.name, toItemAmount, toSlot, 'swapped item', isMove) then
-                        Inventory.AddItemStrict(toId, fromItem.name, fromItemAmount, toSlot, fromItem.info, 'swapped item')
-                        Inventory.AddItemStrict(fromId, toItem.name, toItemAmount, fromSlot, toItem.info, 'swapped item')
-                    end
-                end
-
-            -- Перемещаем предмет в пустой слот.
-            else
-                if toId ~= fromId then
-                    local fromItemAmount = fromItem.amount
-                    if not Inventory.CanAddItem(toId, fromItem.name, fromItemAmount, fromItem.info) then
-                        Inventory.SaveStash(fromId)
-                        Inventory.CloseInventory(src, fromId)
-                        Inventory.CloseInventory(src, toId)
-                    else
-                        if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'moved item', isMove) then
-                            if not Inventory.AddItemStrict(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'moved item') then
-                                Inventory.AddItemStrict(fromId, fromItem.name, toAmount, fromSlot, fromItem.info, 'rollback moved item')
-                            end
-                        end
-                    end
-                else
-                    if Inventory.RemoveItem(fromId, fromItem.name, toAmount, fromSlot, 'moved item', isMove) then
-                        Inventory.AddItemStrict(toId, fromItem.name, toAmount, toSlot, fromItem.info, 'moved item')
-                    end
-                end
-            end
+            Inventory.TryMoveItem(src, fromId, toId, fromSlot, toSlot, fromItem, toAmount, isMove)
         end
     end
 end)
+
 RegisterNetEvent('rsg-inventory:server:openPlayerInventory', function(targetId)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
@@ -432,50 +332,15 @@ RegisterNetEvent('rsg-inventory:server:openStash', function(stashId)
         })
     end
 
-    -- Prevent access to restricted stashes (add your patterns here)
-    local restrictedPatterns = {
-        '^police%-',      -- Police stashes
-        '^marshal%-',     -- Marshal stashes
-        '^gang%-',        -- Gang stashes (unless player is in that gang)
-        '^admin%-',       -- Admin stashes
-        '^evidence%-'     -- Evidence stashes
-    }
-
-    local isRestricted = false
-    local stashType = nil
-
-    for _, pattern in ipairs(restrictedPatterns) do
-        if stashId:match(pattern) then
-            isRestricted = true
-            stashType = pattern:gsub('[%-^]', ''):gsub('%-', '')
-            break
-        end
-    end
-
-    if isRestricted then
-        local hasAccess = false
-
-        -- Check specific permissions based on stash type
-        if stashType == 'police' or stashType == 'marshal' then
-            hasAccess = RSGCore.Functions.HasPermission(src, 'police') or
-                       Player.PlayerData.job.name == 'police' or
-                       Player.PlayerData.job.name == 'marshal'
-        elseif stashType == 'gang' then
-            -- Extract gang name from stash ID (e.g., 'gang-lemoyne-stash' -> 'lemoyne')
-            local gangName = stashId:match('gang%-(.+)%-')
-            hasAccess = Player.PlayerData.gang and Player.PlayerData.gang.name == gangName
-        elseif stashType == 'admin' or stashType == 'evidence' then
-            hasAccess = RSGCore.Functions.HasPermission(src, 'admin')
-        end
-
-        if not hasAccess then
-            return TriggerClientEvent('ox_lib:notify', src, {
-                title = locale('error.access_denied'),
-                description = locale('error.no_permission_stash'),
-                type = 'error',
-                duration = 5000
-            })
-        end
+    -- Ограниченные хранилища (общая проверка в server/functions.lua): police-, marshal-, gang-, admin-, evidence-.
+    local stashType = Inventory.GetRestrictedStashType(stashId)
+    if stashType and not Inventory.HasStashAccess(src, stashId, Player, stashType) then
+        return TriggerClientEvent('ox_lib:notify', src, {
+            title = locale('error.access_denied'),
+            description = locale('error.no_permission_stash'),
+            type = 'error',
+            duration = 5000
+        })
     end
 
     -- Additional distance check for world stashes

@@ -1,6 +1,22 @@
+local RSGCore = exports['rsg-core']:GetCoreObject()
 -- Общие правила клиента и сервера: проверка количества, метаданные и совместимость стаков.
 -- Клиент использует их для подсказки вместимости, сервер — для фактической выдачи предметов.
 InventoryRules = {}
+
+-- Единый формат серийного номера оружия: 2 цифры, 3 буквы, 1 цифра, 2 буквы, 3 цифры, 4 буквы.
+-- Используется и при ручной выдаче (/giveitem), и при обычной выдаче через PlanAddItem,
+-- чтобы формат номера менялся в одном месте.
+function InventoryRules.GenerateWeaponSerial()
+    return string.format(
+        "%s%s%s%s%s%s",
+        RSGCore.Shared.RandomInt(2),
+        RSGCore.Shared.RandomStr(3),
+        RSGCore.Shared.RandomInt(1),
+        RSGCore.Shared.RandomStr(2),
+        RSGCore.Shared.RandomInt(3),
+        RSGCore.Shared.RandomStr(4)
+    )
+end
 
 -- Принимает только положительное целое количество. nil заменяется указанным default.
 -- Отсекает дроби, NaN и бесконечность до любых изменений инвентаря.

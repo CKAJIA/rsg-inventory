@@ -181,24 +181,6 @@ AddEventHandler('playerDropped', function()
     Wheel.lastUseAt[source] = nil
 end)
 
---[[
-CreateThread(function()
-    local pollMs = tonumber(SyncConfig and SyncConfig.ServerPollMs) or 2000
-
-    while true do
-        Wait(pollMs)
-
-        for _, playerId in ipairs(GetPlayers()) do
-            local source = tonumber(playerId)
-
-            if source then
-                Inventory.SyncInputWheel(source, false)
-            end
-        end
-    end
-end)
---]]
-
 AddEventHandler('rsg-inventory:server:itemChanged', function(source, itemName, payload)
     if not source or not getWheelItemConfig(itemName) then return end
 
