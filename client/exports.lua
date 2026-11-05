@@ -63,11 +63,11 @@ function HasItem(items, amount, anyItem)
         if anyItem then
             for _, itemName in ipairs(items) do
                 if hasAmount(itemName, requiredAmount) then
-                    return true
+                    return true, itemName
                 end
             end
 
-            return false
+            return false, nil
         end
 
         -- Нужны все предметы списка
