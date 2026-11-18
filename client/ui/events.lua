@@ -1,6 +1,16 @@
 -- Toggle the hotbar UI with given items
 local RSGCore = exports['rsg-core']:GetCoreObject()
 
+-- Окно получает сроки один раз при открытии и затем считает проценты само.
+function BuildInventoryDecayRules()
+    local rules = {}
+    for name, definition in pairs(RSGCore.Shared.Items) do
+        local minutes = InventoryRules.GetDecayMinutes(definition)
+        if minutes then rules[name] = { minutes = minutes, delete = definition.delete == true } end
+    end
+    return rules
+end
+
 -- @param items: table of items to display on the hotbar
 RegisterNetEvent('rsg-inventory:client:hotbar', function(items)
     local token = exports['rsg-core']:GenerateCSRFToken() -- CSRF token for NUI security
@@ -208,17 +218,18 @@ end
 -- Open the inventory UI with specified items and optional extra context
 -- @param items: table of inventory items
 -- @param other: optional table with extra info (trunk, stash, etc.)
-RegisterNetEvent('rsg-inventory:client:openInventory', function(items, other)
+RegisterNetEvent('rsg-inventory:client:openInventory', function(items, other, serverTime)
     local token = exports['rsg-core']:GenerateCSRFToken()
     local invToken = GenerateInventoryCbToken()
     local Player = RSGCore.Functions.GetPlayerData()
     local config = require 'shared.config'
-    local function L(k, d) return locale(k) or d end
     local labels = buildLabels()
     SetNuiFocus(true, true) -- focus mouse and keyboard on NUI
 	
     SendNUIMessage({
         action     = 'open',
+        serverTime = serverTime,
+        decayRules = BuildInventoryDecayRules(),
 		categories = config.categories,
         inventory  = items,
         slots      = Player.slots,      -- max inventory slots
@@ -235,54 +246,6 @@ RegisterNetEvent('rsg-inventory:client:openInventory', function(items, other)
         labels     = labels,		
     })
 end)
-
-
-
-
-
-
-local function openInventoryNUI(items, payload)
-    local token  = exports['rsg-core']:GenerateCSRFToken()
-    local invToken = GenerateInventoryCbToken()
-    local Player = RSGCore.Functions.GetPlayerData()
-    local config = require 'shared.config'
-    local labels = buildLabels()
-
-    SetNuiFocus(true, true)
-
-    local data = {
-        action     = 'open',
-        categories = config.categories,
-        inventory  = items,
-        slots      = Player.slots,
-        maxweight  = Player.weight,
-        playerId   = Player.source or Player.id or Player.citizenid,
-        playerName = (Player.charinfo and Player.charinfo.firstname)
-            and (Player.charinfo.firstname .. ' ' .. Player.charinfo.lastname)
-            or Player.source,
-        token      = token,
-        invToken  = invToken,
-        closeKey   = config.Keybinds.Close,
-        cash       = Player.money.cash,
-        labels     = labels,
-    }
-
-    -- 👇 добавляем ТОЛЬКО нужный контекст
-    for k, v in pairs(payload or {}) do
-        data[k] = v
-    end
-
-    SendNUIMessage(data)
-end
---[[
-RegisterNetEvent('rsg-inventory:client:openInventory', function(items, other)
-    openInventoryNUI(items, { other = other })
-end)
-
-RegisterNetEvent('rsg-inventory:client:openTradeInventory', function(items, trade)
-    openInventoryNUI(items, { trade = trade })
-end)
---]]
 
 ------------------------------------------------
 -- on money change

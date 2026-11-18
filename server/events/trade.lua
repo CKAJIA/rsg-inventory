@@ -23,6 +23,16 @@ local function isOnCooldown(src)
     return false
 end
 
+-- inv_busy запрещает трейд обоим участникам, в том числе при сборе предметов.
+local function rejectBusyTrade(src, targetId)
+    if not Player(src).state.inv_busy and not Player(targetId).state.inv_busy then return false end
+    TriggerClientEvent('ox_lib:notify', src, {
+        title = locale('error.error'), description = locale('info.other_already_trade'),
+        type = 'error', duration = 5000,
+    })
+    return true
+end
+
 -- Проверяет участника и citizenid: новый персонаж с прежним source не получит чужие предметы.
 local function ownsTrade(trade, src)
     local side = trade.initiator == src and 'initiator' or (trade.target == src and 'target' or nil)
@@ -135,6 +145,7 @@ RegisterNetEvent('rsg-inventory:server:initiateTrade', function(targetId)
         TriggerClientEvent('ox_lib:notify', src, { title = locale('error.error'), description = locale('error.error'), type = 'error', duration = 5000 })
         return
     end
+    if rejectBusyTrade(src, targetId) then return end
 
     if #(GetEntityCoords(GetPlayerPed(src)) - GetEntityCoords(GetPlayerPed(targetId))) > Inventory.MAX_DIST then
         TriggerClientEvent('ox_lib:notify', src, { title = locale('error.error'), description = locale('error.player_too_far'), type = 'error', duration = 5000 })
@@ -184,6 +195,13 @@ RegisterNetEvent('rsg-inventory:server:acceptTradeRequest', function(initiatorId
     local player = RSGCore.Functions.GetPlayer(src)
     local initiator = RSGCore.Functions.GetPlayer(initiatorId)
     if not player or not initiator then return end
+    -- За время приглашения любой участник мог начать копать или осматривать предмет.
+    if rejectBusyTrade(src, initiatorId) then
+        pendingRequests[initiatorId] = nil
+        TriggerClientEvent('rsg-inventory:client:tradeRequestCancelled', initiatorId)
+        TriggerClientEvent('rsg-inventory:client:tradeRequestCancelled', src)
+        return
+    end
 
     if #(GetEntityCoords(GetPlayerPed(src)) - GetEntityCoords(GetPlayerPed(initiatorId))) > Inventory.MAX_DIST then
         TriggerClientEvent('ox_lib:notify', src, { title = locale('error.error'), description = locale('error.player_too_far'), type = 'error', duration = 5000 })
@@ -210,8 +228,9 @@ RegisterNetEvent('rsg-inventory:server:acceptTradeRequest', function(initiatorId
     local initiatorItems = initiator.PlayerData.items
     local targetItems = player.PlayerData.items
     
-    TriggerClientEvent('rsg-inventory:client:openTrade', initiatorId, tradeId, src, getCharName(src), initiatorItems, player.PlayerData)
-    TriggerClientEvent('rsg-inventory:client:openTrade', src, tradeId, initiatorId, getCharName(initiatorId), targetItems, initiator.PlayerData)
+    local serverTime = os.time()
+    TriggerClientEvent('rsg-inventory:client:openTrade', initiatorId, tradeId, src, getCharName(src), initiatorItems, player.PlayerData, serverTime)
+    TriggerClientEvent('rsg-inventory:client:openTrade', src, tradeId, initiatorId, getCharName(initiatorId), targetItems, initiator.PlayerData, serverTime)
     publishTrade(Trades[tradeId])
 end)
 

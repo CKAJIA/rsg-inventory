@@ -19,10 +19,13 @@ Inventory.LoadInventory = function(source, citizenid)
     for _, item in pairs(inventory) do
         if item and item.name then
             local itemInfo = RSGCore.Shared.Items[item.name:lower()]
-            local updated, quality, delete = Inventory.CheckItemDecay(item, itemInfo, currentTime, config.ItemsDecayWhileOffline and 1 or 0)
-            local check = not (updated and delete and quality <= 0)
+            -- При выключенной офлайн-порче продолжаем отсчёт с момента загрузки.
+            if not config.ItemsDecayWhileOffline and InventoryRules.GetDecayMinutes(itemInfo) and type(item.info) == 'table' then
+                item.info.lastUpdate = currentTime
+            end
+            local _, _, expired = Inventory.CheckItemDecay(item, itemInfo, currentTime)
 
-            if itemInfo and check then
+            if itemInfo and not expired then
                 loadedInventory[item.slot] = {
                     name = itemInfo['name'],
                     amount = item.amount,
@@ -39,7 +42,7 @@ Inventory.LoadInventory = function(source, citizenid)
                     slot = item.slot,
                     combinable = itemInfo['combinable']
                 }
-            else
+            elseif not itemInfo then
                 missingItems[#missingItems + 1] = item.name:lower()
             end
         end
@@ -212,9 +215,10 @@ exports('GetFirstSlotByItem', Inventory.GetFirstSlotByItem)
 Inventory.GetItemBySlot = function(source, slot)
     local Player = RSGCore.Functions.GetPlayer(source)
     if not Player then return end
-    local item = Player.PlayerData.items[tonumber(slot)]
-    if not item then return end
-    return Inventory.CheckPlayerItemDecay(Player, item)
+    slot = tonumber(slot)
+    if not Player.PlayerData.items[slot] then return end
+    Inventory.CheckPlayerItemsDecay(Player, slot)
+    return Player.PlayerData.items[slot]
 end
 
 exports('GetItemBySlot', Inventory.GetItemBySlot)
@@ -642,7 +646,7 @@ Inventory.OpenInventoryById = function(source, targetId)
     }
     Wait(1500)
     Player(targetId).state.inv_busy = true
-    TriggerClientEvent('rsg-inventory:client:openInventory', source, playerItems, formattedInventory)
+    TriggerClientEvent('rsg-inventory:client:openInventory', source, playerItems, formattedInventory, os.time())
 end
 
 exports('OpenInventoryById', Inventory.OpenInventoryById)
@@ -683,7 +687,7 @@ Inventory.OpenInventory = function (source, identifier, data)
     if not identifier then
         Player(source).state.inv_busy = true
         Inventory.CheckPlayerItemsDecay(RSGPlayer)
-        TriggerClientEvent('rsg-inventory:client:openInventory', source, RSGPlayer.PlayerData.items)
+        TriggerClientEvent('rsg-inventory:client:openInventory', source, RSGPlayer.PlayerData.items, nil, os.time())
         return
     end
 
@@ -720,7 +724,7 @@ Inventory.OpenInventory = function (source, identifier, data)
     
     Player(source).state.inv_busy = true
     Inventory.CheckPlayerItemsDecay(RSGPlayer)
-    TriggerClientEvent('rsg-inventory:client:openInventory', source, RSGPlayer.PlayerData.items, formattedInventory)
+    TriggerClientEvent('rsg-inventory:client:openInventory', source, RSGPlayer.PlayerData.items, formattedInventory, os.time())
 end
 
 exports('OpenInventory', Inventory.OpenInventory)
@@ -800,9 +804,10 @@ Inventory.AddItem = function(identifier, item, amount, slot, info, reason, allow
     if not amount or not RSGCore.Shared.Items[item] then return false end
     local inventory, inventoryWeight, inventorySlots, player = Inventory.GetContainerData(identifier)
     if not inventory then return false end
+    local decayRate = player and 1 or Helpers.ParseDecayRate(tostring(identifier)) or 1
     if player then Inventory.CheckPlayerItemsDecay(player); inventory = player.PlayerData.items
-    else Inventory.CheckItemsDecay(inventory, Helpers.ParseDecayRate(tostring(identifier)) or 1) end
-    local plan, result = Inventory.PlanAddItem(inventory, inventoryWeight, inventorySlots, item, amount, slot, info)
+    else Inventory.CheckItemsDecay(inventory, decayRate) end
+    local plan, result = Inventory.PlanAddItem(inventory, inventoryWeight, inventorySlots, item, amount, slot, info, decayRate)
     if not plan then
         if player and allowDrop ~= false and config.AutoDropOnFull ~= false
             and (result == 'weight' or result == 'slots') then

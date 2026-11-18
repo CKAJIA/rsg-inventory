@@ -210,8 +210,8 @@ RegisterNetEvent('rsg-inventory:server:SetInventoryData', function(fromInventory
     local fromId, fromType = Inventory.GetIdentifier(fromInventory, src)
     local toId, toType = Inventory.GetIdentifier(toInventory, src)
     if fromId ~= toId then isMove = true end
-    local fromItems, _, fromSlots = Inventory.GetContainerData(fromId)
-    local toItems, _, toSlots = Inventory.GetContainerData(toId)
+    local fromItems, _, fromSlots, fromPlayer = Inventory.GetContainerData(fromId)
+    local toItems, _, toSlots, toPlayer = Inventory.GetContainerData(toId)
     if not fromItems or not toItems or fromSlot > fromSlots or toSlot > toSlots then return end
 
     -- Проверяем дистанцию, кроме разрешённого административного доступа.
@@ -230,6 +230,14 @@ RegisterNetEvent('rsg-inventory:server:SetInventoryData', function(fromInventory
             TriggerClientEvent('ox_lib:notify', src, { title = message, type = 'error', duration = 5000 })
             return
         end
+    end
+
+    -- Сгнивший слот считается пустым до выбора переноса, разделения или обмена.
+    if fromPlayer then Inventory.CheckPlayerItemsDecay(fromPlayer)
+    else Inventory.CheckItemsDecay(fromItems, Helpers.ParseDecayRate(fromInventory) or 1) end
+    if fromId ~= toId then
+        if toPlayer then Inventory.CheckPlayerItemsDecay(toPlayer)
+        else Inventory.CheckItemsDecay(toItems, Helpers.ParseDecayRate(toInventory) or 1) end
     end
 
     local fromItem = Inventory.GetItem(fromInventory, src, fromSlot)

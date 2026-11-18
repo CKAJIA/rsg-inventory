@@ -55,11 +55,41 @@ const CATEGORY_MAP = {
 };
 **/
 
+// Та же формула, что в InventoryRules.ApplyDecay, для локального снимка.
+function applyDecay(info, minutes, now, rate) {
+    let quality = Math.max(0, Math.min(100, Math.floor(Number(info.quality ?? 100) + 0.5)));
+    let lastUpdate = Number(info.lastUpdate ?? now);
+    const previousRate = Number(info.decayRate ?? rate);
+    let carry = Number(info.decayCarry ?? 0);
+    if (previousRate > 0 && quality > 0) {
+        const scale = 1000000;
+        const start = Math.floor(lastUpdate * scale + 0.5);
+        const elapsed = Math.max(0, Math.floor(now * scale + 0.5) - start);
+        const interval = Math.max(1, Math.floor(minutes * 0.6 / previousRate * scale + 0.5));
+        const steps = Math.min(quality, Math.floor(elapsed / interval));
+        quality -= steps;
+        if (steps > 0) lastUpdate = (start + steps * interval) / scale;
+        carry = Math.max(0, now - lastUpdate) * previousRate;
+    }
+    if (quality === 0) carry = 0;
+    if (rate !== previousRate) lastUpdate = rate > 0 ? now - carry / rate : now;
+    carry = rate === 0 ? carry : undefined;
+    if (quality === info.quality && lastUpdate === info.lastUpdate && rate === info.decayRate && carry === info.decayCarry) return info;
+    return {...info, quality, lastUpdate, decayRate: rate, decayCarry: carry};
+}
+
 const InventoryContainer = Vue.createApp({
     data() {
         return this.getInitialState();		
     },
     computed: {
+        otherDecayRate() {
+            if (this.isShopInventory) return null;
+            const name = this.otherInventoryName.toLowerCase();
+            if (name.startsWith('drop-') || name.startsWith('otherplayer-')) return 1;
+            const match = name.match(/decay(\d+)/);
+            return match ? Number(match[1]) / 100 : 1;
+        },
         // Сервер проверяет всё предложение: кнопка недоступна до ответа и при переполнении любой стороны.
         tradeCapacityBlocked() {
             return !this.tradeCapacity || !this.tradeCapacity.initiatorCanReceive || !this.tradeCapacity.targetCanReceive;
@@ -489,6 +519,13 @@ const InventoryContainer = Vue.createApp({
 //		},
     },
     watch: {
+        isInventoryOpen(open) {
+            clearInterval(this._decayTimer);
+            if (open) {
+                this.tickDecay();
+                this._decayTimer = setInterval(() => this.tickDecay(), 1000);
+            }
+        },
         //transferAmount(newVal) {
         //    if (newVal !== null && newVal < 1) this.transferAmount = 1;
         //},
@@ -540,6 +577,33 @@ const InventoryContainer = Vue.createApp({
 		
     },
     methods: {
+        startDecayClock(data) {
+            this.decayRules = data.decayRules || {};
+            this._decayStart = performance.now() / 1000 - (data.serverTime ?? Math.floor(Date.now() / 1000));
+        },
+
+        tickDecay() {
+            const now = Math.floor(performance.now() / 1000 - this._decayStart);
+            for (const [inventory, rate] of [[this.playerInventory, 1], [this.otherInventory, this.otherDecayRate]]) {
+                if (rate == null) continue; // Товары в магазине не портятся на витрине.
+                for (const [slot, item] of Object.entries(inventory)) {
+                    const rule = this.decayRules[item.name];
+                    if (!rule) continue;
+                    item.info = applyDecay(item.info || {}, rule.minutes, now, rate);
+                    if (rule.delete && item.info.quality === 0) {
+                        delete inventory[slot];
+                        if (this.selectedPlayerItemInfo === item || this.selectedOtherItemInfo === item) this.clearInventorySelection(inventory);
+                        if (this.currentlyDraggingItem === item) this.clearDragData();
+                    }
+                }
+            }
+        },
+
+        formatQuality(item) {
+            const quality = Number(item.info.quality);
+            return this.decayRules[item.name] ? Math.round(quality) : quality.toFixed(2);
+        },
+
         getInitialState() {
             return {
                 // Config Options
@@ -547,6 +611,7 @@ const InventoryContainer = Vue.createApp({
                 totalSlots: 0,
                 // Escape Key
                 isInventoryOpen: false,
+                decayRules: {},
                 additionalCloseKey: 'KeyI',
                 // Single pane
                 isOtherInventoryEmpty: true,
@@ -740,6 +805,7 @@ const InventoryContainer = Vue.createApp({
                 });
         },
         openInventory(data) {
+            this.startDecayClock(data);
             if (this.showHotbar) {
                 this.wasHotbarEnabled = true;
                 this.toggleHotbar(false);
@@ -936,42 +1002,6 @@ const InventoryContainer = Vue.createApp({
 		},
 		
 		
-		/*
-		updateInventory(data) {
-            this.playerInventory = {};
-
-            if (data.inventory) {
-                if (Array.isArray(data.inventory)) {
-                    data.inventory.forEach((item) => {
-                        if (item && item.slot) {
-                            this.playerInventory[item.slot] = item;
-                        }
-                    });
-                } else if (typeof data.inventory === "object") {
-                    for (const key in data.inventory) {
-                        const item = data.inventory[key];
-                        if (item && item.slot) {
-                            this.playerInventory[item.slot] = item;
-                        }
-                    }
-                }
-            }
-            
-            // 3. УМНЫЙ СБРОС (Вставка функции clearInventorySelection)
-            if (this.selectedPlayerItemInfo) {
-                const slot = this.selectedPlayerItemInfo.slot;
-                const newItem = this.playerInventory[slot];
-
-                // Если предмет пропал ИЛИ изменился (другое имя)
-                if (!newItem || newItem.name !== this.selectedPlayerItemInfo.name) {
-                    // Вызываем вашу функцию очистки для инвентаря игрока
-                    this.clearInventorySelection(this.playerInventory);
-                } else {
-                    // Если предмет остался, обновляем данные (кол-во)
-                    this.selectedPlayerItemInfo = newItem;
-                }
-            }
-        },*/
 		updateInventory(data) {
 			if (!data || !data.inventory) {
 				return; // безопасно: не чистим UI, если пакет без inventory
@@ -2396,7 +2426,7 @@ const InventoryContainer = Vue.createApp({
 					let html = "";
 					// Поля которые нужно скрыть (технические)
 					const hiddenFields = [
-						'description', 'lastUpdate', 'componentshash', 'components',
+						'description', 'lastUpdate', 'decayRate', 'decayCarry', 'componentshash', 'components',
 						// Поля одежды (на случай если предмет не определился как одежда)
 						'_c', '_h', '_m', '_t', '_g', '_e', '_category', '_hash', 
 						'_model', '_texture', '_isMale', '_equipped',
@@ -2413,8 +2443,10 @@ const InventoryContainer = Vue.createApp({
 							html += renderInfo(value, indent + 1);
 						} else {
 							let displayValue = value;
-							if (typeof value === "number") { //если это номер- то для качества округляем и приписываем %
-								displayValue = `${value.toFixed(2)} %`;
+							if (key === 'quality' && indent === 0) {
+								displayValue = `${this.formatQuality(item)}%`;
+							} else if (typeof value === "number") {
+								displayValue = `${value.toFixed(2)}%`;
 							}
 							html += `<div class="tooltip-info"><span class="tooltip-info-key">${this.formatKey(key)}</span>${displayValue}</div>`;
 						}
@@ -2568,6 +2600,7 @@ const InventoryContainer = Vue.createApp({
 		
         postInventoryData(fromInventory, toInventory, fromSlot, toSlot, fromAmount, toAmount) {
             this.busy = true;
+            if (fromInventory !== toInventory && this.otherDecayRate != null && this.otherDecayRate !== 1) this.tickDecay();
             let fromInventoryName = fromInventory === "other" ? this.otherInventoryName : fromInventory;
             let toInventoryName = toInventory === "other" ? this.otherInventoryName : toInventory;
 
@@ -2592,6 +2625,7 @@ const InventoryContainer = Vue.createApp({
 
         // -------- Trade Methods --------
         openTrade(data) {
+            this.startDecayClock(data);
             this.isInventoryOpen = true;
             this.maxWeight = data.maxweight || 0;
             this.totalSlots = data.slots || 0;
@@ -3308,6 +3342,7 @@ const InventoryContainer = Vue.createApp({
         this._gridSetupObserver();		
     },
     beforeUnmount() {
+        clearInterval(this._decayTimer);
         window.removeEventListener("mousemove", () => { });
         window.removeEventListener("keydown", () => { });
         window.removeEventListener("message", () => { });

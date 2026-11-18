@@ -80,6 +80,7 @@ Shops.OpenShop = function(source, name)
         end
     end
 
+    Inventory.CheckPlayerItemsDecay(player)
     local EnrichedPlayerItems = {}
     local playerItems = player.PlayerData.items
 
@@ -113,10 +114,9 @@ Shops.OpenShop = function(source, name)
 	--print("ShopITEMS = " .. json.encode(player.PlayerData.items))
 
     Player(source).state.inv_busy = true
-    Inventory.CheckPlayerItemsDecay(player)
     
 	--TriggerClientEvent('rsg-inventory:client:openInventory', source, player.PlayerData.items, formattedInventory)
-    TriggerClientEvent('rsg-inventory:client:openInventory', source, EnrichedPlayerItems, formattedInventory)
+    TriggerClientEvent('rsg-inventory:client:openInventory', source, EnrichedPlayerItems, formattedInventory, os.time())
 end
 
 local function cloneTable(tbl)

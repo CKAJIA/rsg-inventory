@@ -39,7 +39,7 @@ local function indexSlot(index, slot, item)
     index.usedSlots = index.usedSlots + 1
     index.weight = index.weight + weight * amount
     local definition = RSGCore.Shared.Items[name]
-    if definition and definition.decay then index.decaying[slot] = true end
+    if InventoryRules.GetDecayMinutes(definition) then index.decaying[slot] = true end
 end
 
 -- Полностью пересобирает индекс игрока после загрузки или замены items.
@@ -98,35 +98,37 @@ end
 
 Inventory.NameIndexUpdate = Inventory.NameIndexAdd
 
--- Проверяет только слоты портящихся предметов, не чаще одного раза в серверную секунду.
--- Защита checkingDecay не даёт обработчикам состояний рекурсивно запустить ту же проверку.
-function Inventory.CheckPlayerItemsDecay(player)
+function Inventory.CheckPlayerItemsDecay(player, singleSlot)
     local src, now = player.PlayerData.source, os.time()
-    if checkingDecay[src] or decayCheckedAt[src] == now then return end
+    if checkingDecay[src] or (not singleSlot and decayCheckedAt[src] == now) then return end
     local index = Inventory.GetPlayerIndex(src)
     if not index then return end
-    checkingDecay[src], decayCheckedAt[src] = true, now
-    local changed, removed = false, {}
-    for slot in pairs(index.decaying) do
-        local item = player.PlayerData.items[slot]
-        if item then
-            local updated, quality, delete = Inventory.CheckItemDecay(item, nil, now)
-            changed = changed or updated
-            if updated and delete and quality <= 0 then
-                player.PlayerData.items[slot] = nil
-                unindexSlot(index, slot)
-                removed[#removed + 1] = item
-            end
-        end
-    end
-    if changed then player.Functions.SetPlayerData('items', player.PlayerData.items) end
+    checkingDecay[src] = true
+    if not singleSlot then decayCheckedAt[src] = now end
+    local items = player.PlayerData.items
+    local changed, removed = Inventory.CheckItemsDecay(items, nil, singleSlot and { [singleSlot] = true } or index.decaying)
+    for slot in pairs(removed) do unindexSlot(index, slot) end
+    if changed then player.Functions.SetPlayerData('items', items) end
     checkingDecay[src] = nil
-    for _, item in ipairs(removed) do
+    for slot, item in pairs(removed) do
         if Inventory.ItemStates then Inventory.ItemStates.OnItemChanged(src, item.name) end
-        Inventory.NotifyItemChanged(src, item.name, { action = 'remove', amount = item.amount, slot = item.slot, reason = 'decay' })
+        Inventory.NotifyItemChanged(src, item.name, { action = 'remove', amount = item.amount, slot = slot, reason = 'decay' })
         TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item.name], 'remove', item.amount)
     end
 end
+
+-- Окно инвентаря здесь не участвует. Обычные слоты и игроки без decay пропускаются.
+CreateThread(function()
+    while true do
+        Wait(1000)
+        for src, index in pairs(Inventory.PlayerIndexes) do
+            if next(index.decaying) then
+                local player = RSGCore.Functions.GetPlayer(src)
+                if player then Inventory.CheckPlayerItemsDecay(player) end
+            end
+        end
+    end
+end)
 
 -- Очищает индекс и ограничения decay при выходе; новый игрок с тем же source начнёт с нуля.
 local function clear(source)

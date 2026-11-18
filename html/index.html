@@ -181,8 +181,8 @@
 						<div class="divider"></div>
 						<div class="item-amount-quantity">
 							<div class="item-quality">
-								<div class="item-quality1" v-if="selectedPlayerItemInfo && selectedPlayerItemInfo.info.quality">
-									{{ t.quality }} {{ (selectedPlayerItemInfo.info.quality).toFixed(2) }} %
+								<div class="item-quality1" v-if="selectedPlayerItemInfo?.info?.quality != null">
+									{{ t.quality }} {{ formatQuality(selectedPlayerItemInfo) }}%
 								</div>
 							</div>
 							<div class="item-quantity">
@@ -332,8 +332,8 @@
 						<div class="divider"></div>
 						<div class="item-amount-quantity">
 							<div class="item-quality">
-								<div class="item-quality1" v-if="selectedOtherItemInfo && selectedOtherItemInfo.info.quality">
-									{{ t.quality }} {{ (selectedOtherItemInfo.info.quality).toFixed(2) }}%
+								<div class="item-quality1" v-if="selectedOtherItemInfo?.info?.quality != null">
+									{{ t.quality }} {{ formatQuality(selectedOtherItemInfo) }}%
 								</div>
 							</div>
 							<div class="item-quantity">
@@ -490,8 +490,8 @@
 						<div class="divider"></div>
 						<div class="item-amount-quantity">
 							<div class="item-quality">
-								<div class="item-quality1" v-if="selectedTradeItemInfo && selectedTradeItemInfo.info.quality">
-									{{ t.quality }} {{ (selectedTradeItemInfo.info.quality).toFixed(2) }}%
+								<div class="item-quality1" v-if="selectedTradeItemInfo?.info?.quality != null">
+									{{ t.quality }} {{ formatQuality(selectedTradeItemInfo) }}%
 								</div>
 							</div>
 							<div class="item-quantity">

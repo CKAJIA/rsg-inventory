@@ -89,7 +89,7 @@ exports('CanAddItem', function(name, amount, info)
     end
     local prepared = InventoryRules.PrepareItemInfo(definition, info)
     if cached and cached.definition == definition
-        and InventoryRules.SameMetadata(cached.info, prepared, definition.decay ~= nil and definition.decay ~= false) then
+        and InventoryRules.SameMetadata(cached.info, prepared, InventoryRules.GetDecayMinutes(definition) ~= nil) then
         return cached.fits, not cached.fits and 'slots' or nil
     end
     local fits = false

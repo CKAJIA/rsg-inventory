@@ -112,116 +112,43 @@ end
 --- @param decayRateModifier number|nil Optional modifier for configured decay rate
 --- @return boolean shouldUpdate Whether the item metadata was updated.
 --- @return number|nil newQuality The new quality of the item after decay.
---- @return boolean shouldDelete Whether the item should be deleted when quality reaches 0.
+--- @return boolean expired Whether the item has reached 0% and should be deleted.
 -- Перед расчётом нормализует info: у старых предметов вместо таблицы могла быть строка.
 Inventory.CheckItemDecay = function(item, itemInfo, currentTime, decayRateModifier)
     item.info = type(item.info) == 'table' and item.info or {}
     itemInfo = itemInfo or RSGCore.Shared.Items[item.name:lower()]
+    local minutes = InventoryRules.GetDecayMinutes(itemInfo)
+    if not minutes then return false, nil, false end
     currentTime = currentTime or os.time()
-
-    if not itemInfo or not itemInfo.decay then return false, nil, false end
-
-    if not item.info.quality or not item.info.lastUpdate then
-        item.info.quality = item.info.quality or 100
-        item.info.lastUpdate = currentTime
-        return true, item.info.quality, itemInfo.delete == true
-    end
-    decayRateModifier = decayRateModifier or 1
-    local timeElapsed = currentTime - item.info.lastUpdate
-    local decayRate = (100 / (itemInfo.decay * 60)) * decayRateModifier
-    local newQuality = math.max(0, item.info.quality - timeElapsed * decayRate)
-    item.info.quality = math.round(newQuality, 1)
-	--item.info.quality = math.floor(newQuality + 0.5) --так получаем качество округленное без дробей
-    item.info.lastUpdate = currentTime
-
-    return true, item.info.quality, itemInfo.delete == true
+    local info = item.info
+    local updated = InventoryRules.ApplyDecay(info, minutes, currentTime, decayRateModifier)
+    return updated, info.quality, itemInfo.delete == true and info.quality == 0
 end
 
 --- Applies decay to all items in an inventory.
 --- @param items table<number, table> Inventory items (indexed by slot).
 --- @param decayRateModifier number|nil Optional modifier for configured decay rate
+--- @param slots table|nil Optional index of perishable slots.
 --- @return boolean needsUpdate Returns true if any item was updated or deleted.
 --- @return table removedItems Returns removed items.
-Inventory.CheckItemsDecay = function(items, decayRateModifier)
+Inventory.CheckItemsDecay = function(items, decayRateModifier, slots)
     local needsUpdate = false
     local currentTime = os.time()
     local removedItems = {}
 
-    for slot, item in pairs(items) do
-        local updated, quality, delete = Inventory.CheckItemDecay(item, nil, currentTime, decayRateModifier)
-        if updated then
-            if delete and quality <= 0 then
-                removedItems[slot] = items[slot]
+    for slot in pairs(slots or items) do
+        local item = items[slot]
+        if item then
+            local updated, _, expired = Inventory.CheckItemDecay(item, nil, currentTime, decayRateModifier)
+            if expired then
+                removedItems[slot] = item
                 items[slot] = nil
             end
-            needsUpdate = true
+            needsUpdate = needsUpdate or updated or expired
         end
     end
 
     return needsUpdate, removedItems
-end
-
---- Applies decay to all items in a player's inventory and updates their data.
---- @param player table The player object.
-Inventory.CheckPlayerItemsDecay = function(player)
-    local needsUpdate, removedItems = Inventory.CheckItemsDecay(player.PlayerData.items)
-	local src = player.PlayerData.source
-	
-    if needsUpdate then
-		player.Functions.SetPlayerData('items', player.PlayerData.items)
-		-------------------------------------------------------------
-		-- Удаляем из индекса только реально удалённые decay-предметы
-		for slot, item in pairs(removedItems) do
-			if item then				
-				Inventory.NameIndexRemove(src, item.name, slot)
-				-- Предмет исчез из-за decay.
-                -- Проверяем только правила, где он участвует.
-                Inventory.ItemStates.OnItemChanged(src, item.name)
-				
-				Inventory.NotifyItemChanged(src, item.name, {
-					action = 'remove',
-					amount = item.amount,
-					slot = slot,
-					reason = 'decay'
-				})
-				
-				TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item.name], 'remove', item.amount)
-			end
-		end
-    end
-end
-
---- Applies decay to single item in a player's inventory and updates their data.
---- @param player table The player object.
---- @param item table item object.
-Inventory.CheckPlayerItemDecay = function(player, item) 
-    local updated, quality, delete = Inventory.CheckItemDecay(item)
-	local src = player.PlayerData.source
-    if updated then
-        if delete and quality <= 0 then
-            player.PlayerData.items[item.slot] = nil
-			-------------------------------------------------------
-			Inventory.NameIndexRemove(src, item.name, item.slot)
-			-------------------------------------------------------
-			-- Последний экземпляр этого предмета мог исчезнуть.
-			player.Functions.SetPlayerData('items', player.PlayerData.items)
-			
-			Inventory.ItemStates.OnItemChanged(src, item.name, player)
-			
-			Inventory.NotifyItemChanged(src, item.name, {
-				action = 'remove',
-				amount = item.amount,
-				slot = item.slot,
-				reason = 'decay'
-			})
-			
-            TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item.name], 'remove', item.amount)
-        end
-        
-        player.Functions.SetPlayerData('items', player.PlayerData.items)
-    end
-
-    return player.PlayerData.items[item.slot]
 end
 
 --- @param inventoryId string

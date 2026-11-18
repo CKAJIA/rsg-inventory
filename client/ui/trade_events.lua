@@ -73,7 +73,7 @@ RegisterNetEvent('rsg-inventory:client:tradeRequestCancelled', function()
     lib.hideContext()
 end)
 --]]
-RegisterNetEvent('rsg-inventory:client:openTrade', function(tradeId, partnerId, partnerName, items, partnerData)
+RegisterNetEvent('rsg-inventory:client:openTrade', function(tradeId, partnerId, partnerName, items, partnerData, serverTime)
     if not InventorySession.IsActive() then return end
 	hideTradeInvite()
 	
@@ -89,6 +89,8 @@ RegisterNetEvent('rsg-inventory:client:openTrade', function(tradeId, partnerId, 
 
     SendNUIMessage({
         action = 'openTrade',
+        serverTime = serverTime,
+        decayRules = BuildInventoryDecayRules(),
         tradeId = tradeId,
         partnerId = partnerId,
         partnerName = partnerName,

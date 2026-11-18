@@ -16,8 +16,9 @@ RegisterNetEvent('rsg-inventory:server:openDrop', function(dropId)
     -- Check if player is close enough to the drop
     if #(playerCoords - drop.coords) > 2.5 then return end
 
-    -- Check for item decay
+    -- Снимок для открытия содержит актуальное качество обеих сторон.
     Inventory.CheckItemsDecay(drop.items)
+    Inventory.CheckPlayerItemsDecay(Player)
 
     -- Format the drop inventory for the client
     local formattedInventory = {
@@ -32,7 +33,7 @@ RegisterNetEvent('rsg-inventory:server:openDrop', function(dropId)
     drop.isOpen = true
 
     -- Send both player inventory and drop inventory to client
-    TriggerClientEvent('rsg-inventory:client:openInventory', src, Player.PlayerData.items, formattedInventory)
+    TriggerClientEvent('rsg-inventory:client:openInventory', src, Player.PlayerData.items, formattedInventory, os.time())
 end)
     -- update drops
 lib.callback.register('rsg-inventory:updateDrop', function(source, dropId, coords)

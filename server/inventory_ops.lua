@@ -35,7 +35,7 @@ end
 -- Возвращает plan, первый слот либо nil, причину отказа.
 -- Сначала проверяет вес и все нужные слоты; unique создаёт отдельный предмет на единицу.
 -- У оружия без serie создаётся серийный номер; метаданные разных экземпляров независимы.
-function Inventory.PlanAddItem(items, maxWeight, maxSlots, name, amount, slot, info)
+function Inventory.PlanAddItem(items, maxWeight, maxSlots, name, amount, slot, info, decayRate)
     if type(name) ~= 'string' or type(items) ~= 'table' then return nil, 'invalid_item' end
     name, amount = name:lower(), Inventory.ValidAmount(amount, 1)
     local definition = RSGCore.Shared.Items[name]
@@ -46,6 +46,8 @@ function Inventory.PlanAddItem(items, maxWeight, maxSlots, name, amount, slot, i
     end
     if Inventory.GetTotalWeight(items) + (definition.weight or 0) * amount > maxWeight then return nil, 'weight' end
     info = Inventory.PrepareItemInfo(definition, info)
+    local decay = InventoryRules.GetDecayMinutes(definition)
+    if decay then InventoryRules.ApplyDecay(info, decay, os.time(), decayRate) end
     if definition.unique and amount > 1 and info.serie then return nil, 'invalid_amount' end
     local plan = shallowCopy(items)
     local firstSlot
@@ -198,6 +200,13 @@ end
 function Inventory.TrySwapItems(src, fromId, toId, fromSlot, toSlot, fromItem, toItem, isMove)
     local fromItemAmount = fromItem.amount
     local toItemAmount = toItem.amount
+    local function removeBoth()
+        if not Inventory.RemoveItem(fromId, fromItem.name, fromItemAmount, fromSlot, 'swapped item', isMove) then return false end
+        if Inventory.RemoveItem(toId, toItem.name, toItemAmount, toSlot, 'swapped item', isMove) then return true end
+        -- Целевой стак мог сгнить после проверки. Возвращаем первое списание.
+        Inventory.AddItemStrict(fromId, fromItem.name, fromItemAmount, fromSlot, fromItem.info, 'swap rollback')
+        return false
+    end
 
     if fromId ~= toId then
         local addSuccessFrom = Inventory.CanAddItem(toId, fromItem.name, fromItemAmount, fromItem.info)
@@ -210,8 +219,7 @@ function Inventory.TrySwapItems(src, fromId, toId, fromSlot, toSlot, fromItem, t
             return
         end
 
-        if Inventory.RemoveItem(fromId, fromItem.name, fromItemAmount, fromSlot, 'swapped item', isMove) and
-           Inventory.RemoveItem(toId, toItem.name, toItemAmount, toSlot, 'swapped item', isMove) then
+        if removeBoth() then
             if not Inventory.AddItemStrict(toId, fromItem.name, fromItemAmount, toSlot, fromItem.info, 'swapped item') then
                 Inventory.AddItemStrict(fromId, fromItem.name, fromItemAmount, fromSlot, fromItem.info, 'swap rollback')
                 Inventory.AddItemStrict(toId, toItem.name, toItemAmount, toSlot, toItem.info, 'swap rollback')
@@ -222,8 +230,7 @@ function Inventory.TrySwapItems(src, fromId, toId, fromSlot, toSlot, fromItem, t
             end
         end
     else
-        if Inventory.RemoveItem(fromId, fromItem.name, fromItemAmount, fromSlot, 'swapped item', isMove) and
-           Inventory.RemoveItem(toId, toItem.name, toItemAmount, toSlot, 'swapped item', isMove) then
+        if removeBoth() then
             Inventory.AddItemStrict(toId, fromItem.name, fromItemAmount, toSlot, fromItem.info, 'swapped item')
             Inventory.AddItemStrict(fromId, toItem.name, toItemAmount, fromSlot, toItem.info, 'swapped item')
         end
